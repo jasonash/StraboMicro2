@@ -251,6 +251,13 @@ export function getSortingClass(coefficient: number): string {
  * Orientations are in degrees, 0-180 range (axial data)
  * Returns mean direction and resultant length (0-1)
  */
+/**
+ * Resultant length (0-1) above which the grains have a preferred orientation worth reporting.
+ * Below it the mean direction falls between clusters and describes no real grains. Used by the
+ * Statistics panel and the rose diagram's mean line, so the two always agree.
+ */
+export const PREFERRED_ORIENTATION_MIN_R = 0.3;
+
 export function calculateCircularMean(orientations: number[]): {
   mean: number;
   resultantLength: number;
@@ -470,7 +477,7 @@ export function analyzeGrains(
 
   // Orientation analysis
   const circularOrientation = calculateCircularMean(orientations);
-  const hasPreferredOrientation = circularOrientation.resultantLength > 0.3;
+  const hasPreferredOrientation = circularOrientation.resultantLength > PREFERRED_ORIENTATION_MIN_R;
 
   // Total coverage
   const totalAreaMicrons2 = areas.reduce((a, b) => a + b, 0);

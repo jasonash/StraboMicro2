@@ -8,11 +8,16 @@
  * so each petal is parallel to the grains it counts as they appear in the image.
  * A direction of theta degrees points along (cos θ, -sin θ) on screen (canvas y grows
  * downward), which is canvas arc angle -θ. Every element below uses that one rule.
+ *
+ * Equal-area rose: a petal's area, not its length, is proportional to its count (radius goes
+ * with the square root), so busy sectors are not visually exaggerated. The rings are drawn at
+ * whole-number counts on the same square-root scale and labelled with them.
  */
 
 import { useEffect, useRef, useMemo } from 'react';
-import { Box, useTheme } from '@mui/material';
-import { generateRoseSectors, calculateCircularMean, calculateCircularStdDev } from '@/services/grainAnalysis/statistics';
+import { Box, Typography, useTheme } from '@mui/material';
+import { generateRoseSectors, calculateCircularMean, calculateCircularStdDev, PREFERRED_ORIENTATION_MIN_R } from '@/services/grainAnalysis/statistics';
+import { roseRings, equalAreaRadius } from '@/utils/countTicks';
 
 interface RoseDiagramProps {
   /** Array of orientation values in degrees (0-180) */
@@ -46,6 +51,7 @@ export function RoseDiagram({
   // Theme-aware colors
   const textColor = isDarkMode ? '#fff' : '#333';
   const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(128, 128, 128, 0.3)';
+  const haloColor = theme.palette.background.paper;
 
   // Generate sectors
   const sectors = useMemo(() => {
@@ -98,12 +104,15 @@ export function RoseDiagram({
     const maxCount = Math.max(...sectors.map(s => s.count));
     if (maxCount === 0) return;
 
+    // Rings at whole-number counts; the outer ring is at or just above the busiest sector
+    const rings = roseRings(maxCount);
+    const outerCount = rings[rings.length - 1];
+
     // Draw grid circles
     ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
-    const gridCircles = 4;
-    for (let i = 1; i <= gridCircles; i++) {
-      const r = (i / gridCircles) * maxRadius;
+    for (const ringCount of rings) {
+      const r = equalAreaRadius(ringCount, outerCount, maxRadius);
       ctx.beginPath();
       ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
       ctx.stroke();
@@ -128,7 +137,7 @@ export function RoseDiagram({
     for (const sector of sectors) {
       if (sector.count === 0) continue;
 
-      const radius = (sector.count / maxCount) * maxRadius;
+      const radius = equalAreaRadius(sector.count, outerCount, maxRadius);
       // Canvas arc angles run clockwise, so the sector from angleMin to angleMax
       // (counterclockwise) is the arc from -angleMax to -angleMin.
       const startAngle = (-sector.angleMax * Math.PI) / 180;
@@ -148,8 +157,24 @@ export function RoseDiagram({
       }
     }
 
+    // Ring labels (grain counts), along a fixed direction just below the 0° axis on the right,
+    // with a halo so they stay readable over petals
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = haloColor;
+    ctx.fillStyle = textColor;
+    const ringLabelRad = (-20 * Math.PI) / 180;
+    for (const ringCount of rings) {
+      const r = equalAreaRadius(ringCount, outerCount, maxRadius);
+      const x = centerX + r * Math.cos(ringLabelRad);
+      const y = centerY - r * Math.sin(ringLabelRad) + 4;
+      ctx.strokeText(String(ringCount), x, y);
+      ctx.fillText(String(ringCount), x, y);
+    }
+
     // Draw mean direction indicator
-    if (showMean && circularStats.resultantLength > 0.1) {
+    if (showMean && circularStats.resultantLength > PREFERRED_ORIENTATION_MIN_R) {
       const meanRad = (circularStats.mean * Math.PI) / 180;
       const indicatorLength = maxRadius + 15;
 
@@ -237,7 +262,7 @@ export function RoseDiagram({
     }
 
     // Stats annotation
-    if (showMean && circularStats.resultantLength > 0.1) {
+    if (showMean && circularStats.resultantLength > PREFERRED_ORIENTATION_MIN_R) {
       ctx.font = '10px system-ui, sans-serif';
       ctx.textAlign = 'left';
       ctx.fillStyle = MEAN_COLOR;
@@ -248,7 +273,7 @@ export function RoseDiagram({
       );
     }
 
-  }, [sectors, orientations.length, circularStats, size, showMean, title, textColor, gridColor]);
+  }, [sectors, orientations.length, circularStats, size, showMean, title, textColor, gridColor, haloColor]);
 
   return (
     <Box sx={{ position: 'relative' }}>
@@ -259,6 +284,19 @@ export function RoseDiagram({
           maxWidth: '100%',
         }}
       />
+      {orientations.length > 0 && (
+        <Typography
+          variant="caption"
+          component="p"
+          sx={{ color: 'text.secondary', mt: 1, maxWidth: size, lineHeight: 1.4 }}
+        >
+          Long-axis orientation of each grain, measured counterclockwise from the image
+          horizontal (0° = horizontal, 90° = vertical). A long axis has no front or back, so each
+          10° sector is drawn on both sides of the center. Equal-area rose: a petal's area is
+          proportional to its number of grains; rings are labelled with grain counts.
+          {showMean && ' Red line (when the grains share a preferred orientation): mean orientation; dashed arc and ±: circular standard deviation (about 1 sd).'}
+        </Typography>
+      )}
     </Box>
   );
 }

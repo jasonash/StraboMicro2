@@ -11,6 +11,7 @@
 
 import { calculateEllipseMetrics } from '../src/utils/grainMetrics.ts';
 import { calculateCircularMean, generateRoseSectors } from '../src/services/grainAnalysis/statistics.ts';
+import { countAxis, roseRings, equalAreaRadius } from '../src/utils/countTicks.ts';
 
 let failures = 0;
 let passes = 0;
@@ -116,6 +117,26 @@ const sectors = generateRoseSectors([5, 44, 46, 95], 18);
 eq('sector 0-10 holds 5', sectors[0].count, 1);
 eq('sector 40-50 holds 44 and 46', sectors[4].count, 2);
 eq('sector 90-100 holds 95', sectors[9].count, 1);
+
+// ---- Count axes: whole numbers only ----
+const ticksOf = (m: number) => { const { yMax, yStep } = countAxis(m); const t: number[] = []; for (let v = 0; v <= yMax; v += yStep) t.push(v); return t; };
+eq('histogram axis for a max of 7', ticksOf(7).join(' '), '0 2 4 6 8');
+eq('histogram axis for a max of 1', ticksOf(1).join(' '), '0 1 2');
+eq('histogram axis for a max of 48', ticksOf(48).join(' '), '0 10 20 30 40 50');
+for (const m of [0, 1, 3, 7, 9, 23, 137, 1000]) {
+  const t = ticksOf(m);
+  eq(`histogram ticks for ${m} are whole numbers above the max`, t.every(Number.isInteger) && t[t.length - 1] > m, true);
+  const r = roseRings(m);
+  eq(`rose rings for ${m} are whole numbers reaching the max`, r.every(Number.isInteger) && r[r.length - 1] >= Math.max(1, m) && r.length <= 5, true);
+}
+eq('rose rings for a max of 2', roseRings(2).join(' '), '1 2');
+eq('rose rings for a max of 7', roseRings(7).join(' '), '2 4 6 8');
+
+// ---- Equal-area rose: area, not length, goes with the count ----
+const r1 = equalAreaRadius(1, 4, 100), r4 = equalAreaRadius(4, 4, 100);
+close('outer count reaches the outer radius', r4, 100);
+close('a quarter of the count is half the radius (a quarter of the area)', r1, 50);
+eq('zero count has no petal', equalAreaRadius(0, 4, 100), 0);
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

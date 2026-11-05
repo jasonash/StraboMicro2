@@ -9,6 +9,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import { Box, useTheme } from '@mui/material';
 import type { RockType } from '@/services/grainAnalysis/types';
 import { getClassificationScheme, generateHistogramBins } from '@/services/grainAnalysis/statistics';
+import { countAxis } from '@/utils/countTicks';
 
 interface SizeHistogramProps {
   /** Array of size values in microns */
@@ -32,19 +33,6 @@ interface SizeHistogramProps {
 // Colors for the histogram bars (same in both themes)
 const BAR_COLOR = 'rgba(66, 133, 244, 0.8)';
 const BAR_STROKE_COLOR = 'rgba(25, 118, 210, 1)';
-
-/**
- * Count axis with whole-number ticks: the step is 1, 2 or 5 x 10^k (at least 1), chosen for
- * about five intervals; the top is the first step above the largest count, leaving headroom.
- */
-export function countAxis(maxCount: number): { yMax: number; yStep: number } {
-  const safeMax = Math.max(1, maxCount);
-  const raw = safeMax / 5;
-  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1))));
-  const yStep = Math.max(1, [1, 2, 5, 10].map(m => m * magnitude).find(s => s >= raw) ?? 10 * magnitude);
-  const yMax = yStep * (Math.floor(safeMax / yStep) + 1);
-  return { yMax, yStep };
-}
 
 export function SizeHistogram({
   values,
