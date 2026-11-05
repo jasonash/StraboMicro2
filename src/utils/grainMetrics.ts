@@ -156,18 +156,43 @@ export function calculateEllipseMetrics(points: Point[]): {
   const cx = centroid.X;
   const cy = centroid.Y;
 
-  // 2. Calculate central moments (second-order)
-  let mu20 = 0, mu02 = 0, mu11 = 0;
-  for (const p of points) {
-    const dx = p.X - cx;
-    const dy = p.Y - cy;
-    mu20 += dx * dx;
-    mu02 += dy * dy;
-    mu11 += dx * dy;
+  // 2. Second-order central moments of the polygon's AREA (Green's theorem), so the
+  // result depends only on the shape, not on how many vertices were drawn where.
+  // Normalized by area, these are the variances of the filled shape, which makes the
+  // best-fit ellipse the one with the same area moments (as in ImageJ Fit Ellipse).
+  // Coordinates are taken relative to the centroid to keep the sums small.
+  let a2 = 0, sxx = 0, syy = 0, sxy = 0;
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const x0 = points[i].X - cx, y0 = points[i].Y - cy;
+    const p1 = points[(i + 1) % n];
+    const x1 = p1.X - cx, y1 = p1.Y - cy;
+    const cross = x0 * y1 - x1 * y0;
+    a2 += cross;
+    sxx += (x0 * x0 + x0 * x1 + x1 * x1) * cross;
+    syy += (y0 * y0 + y0 * y1 + y1 * y1) * cross;
+    sxy += (x0 * y1 + 2 * x0 * y0 + 2 * x1 * y1 + x1 * y0) * cross;
   }
-  mu20 /= points.length;
-  mu02 /= points.length;
-  mu11 /= points.length;
+  let mu20: number, mu02: number, mu11: number;
+  if (Math.abs(a2) > 1e-10) {
+    // a2 is twice the signed area; dividing by it also cancels the winding direction
+    mu20 = sxx / (6 * a2);
+    mu02 = syy / (6 * a2);
+    mu11 = sxy / (12 * a2);
+  } else {
+    // Zero-area polygon (all points on a line): fall back to vertex moments
+    mu20 = 0; mu02 = 0; mu11 = 0;
+    for (const p of points) {
+      const dx = p.X - cx;
+      const dy = p.Y - cy;
+      mu20 += dx * dx;
+      mu02 += dy * dy;
+      mu11 += dx * dy;
+    }
+    mu20 /= n;
+    mu02 /= n;
+    mu11 /= n;
+  }
 
   // 3. Calculate eigenvalues of covariance matrix
   // Covariance matrix: [[mu20, mu11], [mu11, mu02]]
@@ -177,7 +202,8 @@ export function calculateEllipseMetrics(points: Point[]): {
   const lambda1 = (mu20 + mu02 + discriminant) / 2;
   const lambda2 = (mu20 + mu02 - discriminant) / 2;
 
-  // 4. Major/minor axes (2× standard deviation along each axis = 4×sqrt(eigenvalue))
+  // 4. Major/minor axes: a filled ellipse with semi-axis a has variance a²/4 along it,
+  // so the full axis length is 4 × sqrt(eigenvalue)
   const majorAxis = 4 * Math.sqrt(Math.max(lambda1, 0));
   const minorAxis = 4 * Math.sqrt(Math.max(lambda2, 0));
 

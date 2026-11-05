@@ -58,6 +58,55 @@ for (const o of [0, 45, 90, 135, 179]) {
   eq(`orientation ${o} stays in [0, 180)`, r >= 0 && r < 180, true);
 }
 
+// ---- Shape comes from the polygon's area, not its vertices ----
+
+function close(label: string, actual: number, expected: number, relTol = 0.01) {
+  if (Math.abs(actual - expected) <= relTol * Math.abs(expected)) passes++;
+  else {
+    failures++;
+    console.log(`  FAIL  ${label}\n        got      ${actual.toFixed(4)}\n        expected ${expected}`);
+  }
+}
+
+// A circle of radius 50 (720 vertices): best-fit ellipse axes = the diameter, 100
+const circle = Array.from({ length: 720 }, (_, i) => {
+  const t = (i / 720) * 2 * Math.PI;
+  return { X: 300 + 50 * Math.cos(t), Y: 300 + 50 * Math.sin(t) };
+});
+close('circle major axis = diameter', calculateEllipseMetrics(circle).majorAxis, 100);
+close('circle minor axis = diameter', calculateEllipseMetrics(circle).minorAxis, 100);
+
+// An ellipse with semi-axes 60 x 20 at 30 degrees: axes 120 and 40, orientation 30
+const ellipse30 = Array.from({ length: 720 }, (_, i) => {
+  const t = (i / 720) * 2 * Math.PI, a = (30 * Math.PI) / 180;
+  const s = 60 * Math.cos(t), u = 20 * Math.sin(t);
+  return { X: 400 + s * Math.cos(a) - u * Math.sin(a), Y: 400 - (s * Math.sin(a) + u * Math.cos(a)) };
+});
+const e30 = calculateEllipseMetrics(ellipse30);
+close('60x20 ellipse major axis = 120', e30.majorAxis, 120);
+close('60x20 ellipse minor axis = 40', e30.minorAxis, 40);
+near('60x20 ellipse at 30 degrees', e30.orientation, 30, 0.1);
+
+// A 100 x 20 rectangle: second moments are w^2/12 and h^2/12, so the aspect ratio is 5
+const rect = [{ X: 0, Y: 0 }, { X: 100, Y: 0 }, { X: 100, Y: 20 }, { X: 0, Y: 20 }];
+const r = calculateEllipseMetrics(rect);
+close('rectangle aspect ratio = 5', r.majorAxis / r.minorAxis, 5);
+close('rectangle major axis = 4*sqrt(100^2/12)', r.majorAxis, 4 * Math.sqrt(10000 / 12));
+
+// The same parallelogram with 40 extra points along one edge gives the same answer
+const para = [{ X: 0, Y: 0 }, { X: 100, Y: 0 }, { X: 130, Y: -30 }, { X: 30, Y: -30 }];
+const paraDense = [...para];
+for (let i = 1; i < 40; i++) paraDense.push({ X: 30 - (i * 30) / 40, Y: -30 + (i * 30) / 40 });
+const p1 = calculateEllipseMetrics(para), p2 = calculateEllipseMetrics(paraDense);
+near('extra vertices do not move the orientation', p2.orientation, p1.orientation, 0.01);
+close('extra vertices do not change the major axis', p2.majorAxis, p1.majorAxis, 1e-9);
+close('extra vertices do not change the minor axis', p2.minorAxis, p1.minorAxis, 1e-9);
+
+// Winding direction does not matter
+const rev = calculateEllipseMetrics([...ellipse30].reverse());
+close('reversed winding: same major axis', rev.majorAxis, e30.majorAxis, 1e-9);
+near('reversed winding: same orientation', rev.orientation, e30.orientation, 0.01);
+
 // Circular mean of axial data: 170 and 10 average to 0 (horizontal), not 90
 near('mean of 170 and 10 = 0', calculateCircularMean([170, 10]).mean, 0);
 near('mean of 40, 45, 50 = 45', calculateCircularMean([40, 45, 50]).mean, 45);
