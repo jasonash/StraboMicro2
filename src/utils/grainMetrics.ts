@@ -48,6 +48,9 @@ export interface GrainMetrics {
   aspectRatio: number;
   orientationDegrees: number;
   circularity: number;
+
+  /** Name of the micrograph whose image horizontal is 0° for orientationDegrees (set by grainMetricsInFrames) */
+  orientationFrame?: string;
 }
 
 /**

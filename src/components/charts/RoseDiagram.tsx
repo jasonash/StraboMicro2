@@ -30,6 +30,8 @@ interface RoseDiagramProps {
   showMean?: boolean;
   /** Optional title */
   title?: string;
+  /** Which image's right side 0° points to, for the caption (e.g. "the micrograph image") */
+  frameDescription?: string;
 }
 
 // Colors (same in both themes)
@@ -43,6 +45,7 @@ export function RoseDiagram({
   sectorCount = 18, // 10° sectors
   showMean = true,
   title,
+  frameDescription = 'the micrograph image',
 }: RoseDiagramProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const theme = useTheme();
@@ -291,16 +294,19 @@ export function RoseDiagram({
           component="p"
           sx={{ color: 'text.secondary', flex: '1 1 200px', maxWidth: 260, lineHeight: 1.5, m: 0 }}
         >
-          Long-axis orientation of each grain, measured counterclockwise from the image
-          horizontal (0° = horizontal, 90° = vertical). A long axis has no front or back, so each
-          10° sector is drawn on both sides of the center.
+          {/* Wording approved by Peter Lindquist and Claire Martin, 2026-11-05 */}
+          Rose diagram of the long-axis orientations of the best-fit ellipses of the polygon
+          spots. Angles are measured counterclockwise from the image horizontal, with 0° towards
+          the right side of {frameDescription}. Long axes have no direction, so the diagram spans
+          0–180° and each sector is mirrored across the center.
           <br /><br />
-          Equal-area rose: a petal&apos;s area is proportional to its number of grains; rings are
-          labelled with grain counts.
+          Equal-area rose: a petal&apos;s area is proportional to the number of polygons with
+          long-axis directions that fall into that 10° bin; rings are labeled with polygon spot
+          counts.
           {showMean && (
             <>
               <br /><br />
-              Red line (when the grains share a preferred orientation): mean orientation; dashed
+              Red line (when the polygons share a preferred orientation): mean orientation; dashed
               arc and ±: circular standard deviation (about 1 sd).
             </>
           )}

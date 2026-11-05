@@ -43,7 +43,7 @@ import {
   Check as CheckIcon,
 } from '@mui/icons-material';
 import { useAppStore } from '@/store';
-import { calculateAllGrainMetrics, type GrainMetrics } from '@/utils/grainMetrics';
+import { grainMetricsInFrames } from '@/utils/grainFrames';
 import {
   analyzeGrains,
   type RockType,
@@ -229,18 +229,13 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
     return allPolygonSpots.filter(({ spot }) => selectedSpotIds.has(spot.id));
   }, [allPolygonSpots, spotFilter, selectedSpotIds]);
 
-  // Calculate grain metrics
-  const grainMetrics = useMemo(() => {
-    const metrics: GrainMetrics[] = [];
-
-    for (const { spot, micrograph } of spots) {
-      const scale = micrograph.scalePixelsPerCentimeter || 100;
-      const m = calculateAllGrainMetrics([spot], scale);
-      metrics.push(...m);
-    }
-
-    return metrics;
-  }, [spots]);
+  // Calculate grain metrics. With All micrographs, orientations are turned into each grain's
+  // reference micrograph frame (src/utils/grainFrames.ts), so associated micrographs placed
+  // rotated on their parent are comparable; Current micrograph keeps that image's own frame.
+  const { metrics: grainMetrics, frames: orientationFrames } = useMemo(
+    () => grainMetricsInFrames(spots, (id) => micrographIndex.get(id), scope === 'all'),
+    [spots, micrographIndex, scope]
+  );
 
   // Perform full analysis
   const analysisResults = useMemo((): GrainAnalysisResults | null => {
@@ -320,6 +315,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
         'AspectRatio',
         'OrientationDegrees',
         'Circularity',
+        'OrientationFrame',
       ];
 
       const rows = analysisResults.grains.map(g => [
@@ -335,6 +331,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
         g.aspectRatio.toFixed(3),
         g.orientationDegrees.toFixed(1),
         g.circularity.toFixed(3),
+        g.orientationFrame ?? '',
       ]);
 
       const csvContent = [
@@ -630,11 +627,24 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
               {chartData.aspectRatios.some(ar => ar > 1.2) && (
                 <Paper variant="outlined" sx={{ p: 2 }}>
                   <Typography variant="subtitle2" sx={{ mb: 1 }}>Orientation</Typography>
+                  {orientationFrames.length > 1 && (
+                    <Alert severity="warning" sx={{ mb: 1.5, py: 0 }}>
+                      Polygons from {orientationFrames.length} reference micrographs are combined
+                      ({orientationFrames.map((f) => `${f.name}: ${f.grains}`).join(', ')}). Each is
+                      measured from its own reference micrograph&apos;s horizontal, and those are
+                      not related unless the sections were imaged the same way round.
+                    </Alert>
+                  )}
                   <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                     <RoseDiagram
                       orientations={chartData.orientations}
                       size={280}
                       showMean={true}
+                      frameDescription={
+                        scope === 'all'
+                          ? "each polygon's reference micrograph, measured as the polygon lies on the reference, including any rotation of the associated micrograph it was drawn on"
+                          : 'the micrograph image'
+                      }
                     />
                   </Box>
                 </Paper>
