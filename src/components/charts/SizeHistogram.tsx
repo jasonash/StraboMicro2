@@ -33,6 +33,19 @@ interface SizeHistogramProps {
 const BAR_COLOR = 'rgba(66, 133, 244, 0.8)';
 const BAR_STROKE_COLOR = 'rgba(25, 118, 210, 1)';
 
+/**
+ * Count axis with whole-number ticks: the step is 1, 2 or 5 x 10^k (at least 1), chosen for
+ * about five intervals; the top is the first step above the largest count, leaving headroom.
+ */
+export function countAxis(maxCount: number): { yMax: number; yStep: number } {
+  const safeMax = Math.max(1, maxCount);
+  const raw = safeMax / 5;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1))));
+  const yStep = Math.max(1, [1, 2, 5, 10].map(m => m * magnitude).find(s => s >= raw) ?? 10 * magnitude);
+  const yMax = yStep * (Math.floor(safeMax / yStep) + 1);
+  return { yMax, yStep };
+}
+
 export function SizeHistogram({
   values,
   rockType,
@@ -96,7 +109,10 @@ export function SizeHistogram({
     // Calculate scales
     const xMin = bins[0].min;
     const xMax = bins[bins.length - 1].max;
-    const yMax = Math.max(...bins.map(b => b.count)) * 1.1;
+    // Counts are whole numbers, so the axis ticks are too (1, 2 or 5 x 10^k apart, about five
+    // of them). Before, the top was 1.1 x the largest count split into five equal steps with
+    // rounded labels, so a 1-grain bar sat on the line labelled "2".
+    const { yMax, yStep } = countAxis(Math.max(...bins.map(b => b.count)));
 
     // Transform functions
     const xScale = (v: number): number => {
@@ -145,9 +161,8 @@ export function SizeHistogram({
       ctx.lineWidth = 1;
 
       // Horizontal grid lines
-      const yTicks = 5;
-      for (let i = 0; i <= yTicks; i++) {
-        const y = yScale((i / yTicks) * yMax);
+      for (let value = 0; value <= yMax; value += yStep) {
+        const y = yScale(value);
         ctx.beginPath();
         ctx.moveTo(margin.left, y);
         ctx.lineTo(width - margin.right, y);
@@ -223,9 +238,7 @@ export function SizeHistogram({
 
     // Y-axis labels
     ctx.textAlign = 'right';
-    const yTicks = 5;
-    for (let i = 0; i <= yTicks; i++) {
-      const value = (i / yTicks) * yMax;
+    for (let value = 0; value <= yMax; value += yStep) {
       const y = yScale(value);
 
       // Tick mark
@@ -235,7 +248,7 @@ export function SizeHistogram({
       ctx.stroke();
 
       // Label
-      ctx.fillText(Math.round(value).toString(), margin.left - 8, y + 4);
+      ctx.fillText(value.toString(), margin.left - 8, y + 4);
     }
 
     // Y-axis title
