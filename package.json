@@ -30,6 +30,7 @@
     "test:wheel-zoom": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/wheelZoom.test.mts",
     "test:parent-spots": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/parentSpots.test.mjs",
     "test:parent-area": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/parentArea.test.mjs",
+    "test:grain-orientation": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainOrientation.test.mts",
     "test:grain-outline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainOutline.test.mts",
     "test:auto-place": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/autoPlace.test.mts",
     "test:affine-scale": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/affineScale.test.mts",

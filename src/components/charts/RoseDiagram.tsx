@@ -3,6 +3,11 @@
  *
  * Circular histogram for orientation data (0-180° axial data).
  * Shows distribution of grain orientations with mean direction indicator.
+ *
+ * Angles are counterclockwise from the image horizontal (0° at the right, 90° at the top),
+ * so each petal is parallel to the grains it counts as they appear in the image.
+ * A direction of theta degrees points along (cos θ, -sin θ) on screen (canvas y grows
+ * downward), which is canvas arc angle -θ. Every element below uses that one rule.
  */
 
 import { useEffect, useRef, useMemo } from 'react';
@@ -124,8 +129,10 @@ export function RoseDiagram({
       if (sector.count === 0) continue;
 
       const radius = (sector.count / maxCount) * maxRadius;
-      const startAngle = ((sector.angleMin - 90) * Math.PI) / 180;
-      const endAngle = ((sector.angleMax - 90) * Math.PI) / 180;
+      // Canvas arc angles run clockwise, so the sector from angleMin to angleMax
+      // (counterclockwise) is the arc from -angleMax to -angleMin.
+      const startAngle = (-sector.angleMax * Math.PI) / 180;
+      const endAngle = (-sector.angleMin * Math.PI) / 180;
 
       // Draw the petal (and its mirror at +180°)
       for (const offset of [0, Math.PI]) {
@@ -143,7 +150,7 @@ export function RoseDiagram({
 
     // Draw mean direction indicator
     if (showMean && circularStats.resultantLength > 0.1) {
-      const meanRad = ((circularStats.mean - 90) * Math.PI) / 180;
+      const meanRad = (circularStats.mean * Math.PI) / 180;
       const indicatorLength = maxRadius + 15;
 
       ctx.strokeStyle = MEAN_COLOR;
@@ -189,8 +196,8 @@ export function RoseDiagram({
           centerX,
           centerY,
           maxRadius * 0.8,
-          meanRad - stdDevRad,
-          meanRad + stdDevRad
+          -meanRad - stdDevRad,
+          -meanRad + stdDevRad
         );
         ctx.stroke();
         ctx.setLineDash([]);
@@ -213,7 +220,7 @@ export function RoseDiagram({
     ];
 
     for (const { angle, label } of labels) {
-      const rad = ((angle - 90) * Math.PI) / 180;
+      const rad = (angle * Math.PI) / 180;
       const labelRadius = maxRadius + 18;
       ctx.fillText(
         label,

@@ -181,9 +181,10 @@ export function calculateEllipseMetrics(points: Point[]): {
   const majorAxis = 4 * Math.sqrt(Math.max(lambda1, 0));
   const minorAxis = 4 * Math.sqrt(Math.max(lambda2, 0));
 
-  // 5. Orientation (angle of major axis from horizontal)
-  // atan2(2*mu11, mu20-mu02) / 2 gives angle of principal axis
-  let orientation = 0.5 * Math.atan2(2 * mu11, diff);
+  // 5. Orientation: angle of the major axis, counterclockwise from the image horizontal
+  // (the ImageJ Fit Ellipse convention: 0° = horizontal, 90° = vertical, "/" = 45°).
+  // Image y grows downward, so mu11 is negated to measure counterclockwise as seen on screen.
+  let orientation = 0.5 * Math.atan2(-2 * mu11, diff);
   // Convert to degrees and normalize to 0-180°
   orientation = ((orientation * 180 / Math.PI) % 180 + 180) % 180;
 
