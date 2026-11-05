@@ -629,7 +629,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                   <Typography variant="subtitle2" sx={{ mb: 1 }}>Orientation</Typography>
                   {orientationFrames.length > 1 && (
                     <Alert severity="warning" sx={{ mb: 1.5, py: 0 }}>
-                      Grains from {orientationFrames.length} reference micrographs are combined
+                      Polygons from {orientationFrames.length} reference micrographs are combined
                       ({orientationFrames.map((f) => `${f.name}: ${f.grains}`).join(', ')}). Each is
                       measured from its own reference micrograph&apos;s horizontal, and those are
                       not related unless the sections were imaged the same way round.
@@ -642,8 +642,8 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                       showMean={true}
                       frameDescription={
                         scope === 'all'
-                          ? 'its reference micrograph (grains on associated micrographs are turned into the reference micrograph\'s frame)'
-                          : 'the micrograph image it was drawn on'
+                          ? "each polygon's reference micrograph, measured as the polygon lies on the reference, including any rotation of the associated micrograph it was drawn on"
+                          : 'the micrograph image'
                       }
                     />
                   </Box>
