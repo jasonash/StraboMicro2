@@ -24,6 +24,7 @@ import { useAppStore } from '@/store';
 import { useStickyExpanded } from '@/hooks/useStickyExpanded';
 import { calculateAllGrainMetrics } from '@/utils/grainMetrics';
 import { analyzeGrains } from '@/services/grainAnalysis/statistics';
+import { isPolygonType } from '@/utils/spotGeometryType';
 
 interface GrainSizeSummaryProps {
   micrographId: string;
@@ -109,7 +110,7 @@ export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
 
     // Filter non-archived polygon spots
     let polygonSpots = (micrograph.spots || []).filter(
-      (s) => !s.archived && s.geometryType === 'polygon' && (s.points?.length ?? 0) >= 3
+      (s) => !s.archived && isPolygonType(s.geometryType) && (s.points?.length ?? 0) >= 3
     );
 
     // Apply grain analysis selection filter
@@ -157,7 +158,7 @@ export function GrainSizeSummary({ micrographId }: GrainSizeSummaryProps) {
   const totalPolygonCount = useMemo(() => {
     if (!micrograph) return 0;
     return (micrograph.spots || []).filter(
-      (s) => !s.archived && s.geometryType === 'polygon' && (s.points?.length ?? 0) >= 3
+      (s) => !s.archived && isPolygonType(s.geometryType) && (s.points?.length ?? 0) >= 3
     ).length;
   }, [micrograph]);
 

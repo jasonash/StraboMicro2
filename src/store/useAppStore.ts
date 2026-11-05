@@ -140,12 +140,14 @@ import {
 import type { TiledViewerRef } from '@/components/TiledViewer';
 import { applySiblingLink, repairSiblingPlacements } from '@/utils/siblingPlacement';
 import { affineRealScale, repairAffineScales, setScaleWithCascade } from '@/utils/affineScale';
+import { repairSpotGeometryTypes } from '@/utils/spotGeometryType';
 import { NO_SPOT_FILTER, type SpotFilter } from '@/utils/spotDataSections';
 
 /**
  * Repairs for projects saved by earlier versions, when a project is opened or the session
  * restores it: PPL/XPL pairs saved before every pairing path placed the XPL where its PPL is,
- * and affine placements saved with a stand-in scale before 2026-10-19 (src/utils/affineScale.ts).
+ * affine placements saved with a stand-in scale before 2026-10-19 (src/utils/affineScale.ts),
+ * and spot shape types saved as 'Polygon' by Split and Merge (src/utils/spotGeometryType.ts).
  * Returns the project itself when nothing needed repairing.
  */
 /** Keys of global presets; before they were kept apart, the global ones among the live keys */
@@ -178,7 +180,11 @@ function repairOnOpen(loaded: ProjectMetadata): { project: ProjectMetadata; repa
   if (scales.length > 0) {
     console.log(`[Store] Real scale for ${scales.length} affine-placed micrograph(s): ${scales.join(', ')}`);
   }
-  const repairs = siblings.length + scales.length;
+  const shapes = repairSpotGeometryTypes(copy);
+  if (shapes.length > 0) {
+    console.log(`[Store] Shape type spelled 'polygon' for ${shapes.length} spot(s): ${shapes.join(', ')}`);
+  }
+  const repairs = siblings.length + scales.length + shapes.length;
   return { project: repairs > 0 ? copy : loaded, repairs };
 }
 
@@ -2250,7 +2256,7 @@ export const useAppStore = create<AppState>()(
                 color: firstSpot.color,
                 opacity: firstSpot.opacity,
                 points: newPoints,
-                geometryType: 'Polygon',
+                geometryType: 'polygon',
                 modifiedTimestamp: Date.now(),
                 mergedFrom: spotIds,
                 generationMethod: 'manual' as const,

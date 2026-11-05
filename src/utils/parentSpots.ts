@@ -97,6 +97,40 @@ export function childToParentMatrix(child: MicrographMetadata, parent: Micrograp
   return [a, b, cx - (a * width) / 2 - (b * height) / 2, c, d, cy - (c * width) / 2 - (d * height) / 2];
 }
 
+export interface ReferenceFrame {
+  /** From the micrograph's pixels to the pixels of the top micrograph it can be mapped onto */
+  matrix: AffineMatrix;
+  /** That top micrograph (the reference, or the highest one reachable before a point placement) */
+  rootId: string;
+  rootName: string;
+}
+
+/**
+ * The frame a micrograph's directions are measured in when it is compared with others: its
+ * reference micrograph's pixels, reached through each placement on the way up (rotation,
+ * scale, 3-point registration; a secondary sibling uses its primary's placement). A level that
+ * cannot be mapped (a point placement, unknown size) ends the chain: the micrograph reached so
+ * far is then the frame. Grain Size Analysis turns grain orientations into this frame.
+ */
+export function referenceFrameOf(micrograph: MicrographMetadata, lookup: Lookup): ReferenceFrame {
+  const seen = new Set<string>([micrograph.id]);
+  let current = micrograph;
+  let toRoot: AffineMatrix = identityMatrix();
+  for (;;) {
+    const placed = placementCarrier(current, lookup);
+    const parent = placed.parentID ? lookup(placed.parentID) : undefined;
+    if (!parent || seen.has(parent.id)) break;
+    const step = childToParentMatrix(placed, parent);
+    if (!step) break;
+    seen.add(parent.id);
+    toRoot = composeMatrices(toRoot, step);
+    current = parent;
+  }
+  // A top-level secondary sibling (XPL) shares its primary's pixels: one frame for the pair
+  const root = placementCarrier(current, lookup);
+  return { matrix: toRoot, rootId: root.id, rootName: root.name || 'Unnamed Micrograph' };
+}
+
 export interface ParentSpot {
   /** The spot mapped into the pixels of the micrograph in the viewer */
   spot: Spot;

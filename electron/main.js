@@ -4772,6 +4772,13 @@ function convertCoordToLegacy(coord) {
   };
 }
 
+/** Legacy spelling of a shape type, any case: 'Polygon' -> 'polygon', 'LineString' -> 'line' */
+function legacyGeometryType(type) {
+  if (typeof type !== 'string' || !type) return null;
+  const LEGACY_TYPES = { point: 'point', line: 'line', linestring: 'line', polygon: 'polygon' };
+  return LEGACY_TYPES[type.toLowerCase()] || type;
+}
+
 /**
  * Convert GeoJSON geometry to legacy points array format
  * Legacy format: geometryType + points array of {X, Y} objects
@@ -4779,7 +4786,9 @@ function convertCoordToLegacy(coord) {
 function convertGeometryToLegacy(geometry) {
   if (!geometry) return { geometryType: null, points: null };
 
-  const geometryType = geometry.type || null;
+  // Legacy spelling ('point' / 'line' / 'polygon'): StraboMicro 1 compares with equals("polygon"),
+  // while GeoJSON spells them 'Point' / 'LineString' / 'Polygon'
+  const geometryType = legacyGeometryType(geometry.type);
   let points = null;
 
   if (geometry.coordinates) {
@@ -4813,7 +4822,7 @@ function sanitizeSpotForExport(spot) {
   // Convert geometry to legacy format if present
   const { geometryType, points } = spot.geometry
     ? convertGeometryToLegacy(spot.geometry)
-    : { geometryType: spot.geometryType || null, points: spot.points || null };
+    : { geometryType: legacyGeometryType(spot.geometryType), points: spot.points || null };
 
   // Convert points array to legacy format (uppercase X/Y)
   const legacyPoints = points ? points.map(p => convertCoordToLegacy(p)) : null;
