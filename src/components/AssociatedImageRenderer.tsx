@@ -447,13 +447,20 @@ export const AssociatedImageRenderer: React.FC<AssociatedImageRendererProps> = (
           console.log(`[AssociatedImageRenderer] Target mode: ${targetMode}`);
         }
 
-        // Affine tiles don't self-heal like regular tiles. If they're missing from the
-        // cache (LRU eviction, .smz import, interrupted registration) the load below throws
-        // "Affine thumbnail not found". A failed first attempt bumps retryCount; on the
-        // retry, regenerate the tiles on demand from the source image + stored matrix under
-        // the same hash before loading. Gated on retryCount so the healthy path pays nothing.
-        if (isAffine && micrograph.affineMatrix && imageState.retryCount > 0) {
-          await window.api!.ensureAffineTiles(fullPath, imageHash, micrograph.affineMatrix);
+        // Affine tiles don't self-heal like regular tiles. They are missing on a computer
+        // that just downloaded or imported the project (and after a cleared cache or an
+        // interrupted registration), so build them from the source image + stored matrix
+        // under the same hash before the first load. When they are already there this is
+        // one small metadata read (the main process returns at once).
+        // Before 2026-11-05 this ran only on a retry, so every new computer first failed
+        // with "Affine metadata not found" (Sentry ELECTRON-32/35) and kept the oversample
+        // factor read before the tiles existed (1), drawing the overlay too large.
+        if (isAffine && micrograph.affineMatrix) {
+          const ensured = await window.api!.ensureAffineTiles(fullPath, imageHash, micrograph.affineMatrix);
+          if (ensured.regenerated) {
+            const meta = await window.api!.loadAffineMetadata(imageHash);
+            setAffineOversample(meta && typeof meta.oversample === 'number' ? meta.oversample : 1);
+          }
         }
 
         if (targetMode === 'THUMBNAIL') {
