@@ -51,6 +51,7 @@ import {
 } from '@/services/grainAnalysis';
 import { SizeHistogram, RoseDiagram } from '@/components/charts';
 import type { MicrographMetadata, Spot } from '@/types/project-types';
+import { isPolygonType } from '@/utils/spotGeometryType';
 
 // =============================================================================
 // Types
@@ -149,7 +150,6 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
 
   // Persisted grain analysis selection from store
   const storeSpotFilter = useAppStore((s) => s.grainAnalysisSpotFilter);
-  const storeSelectedIds = useAppStore((s) => s.grainAnalysisSelectedSpotIds);
   const setGrainAnalysisSpotFilter = useAppStore((s) => s.setGrainAnalysisSpotFilter);
   const setGrainAnalysisSelectedSpotIds = useAppStore((s) => s.setGrainAnalysisSelectedSpotIds);
 
@@ -195,7 +195,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
 
     for (const micrograph of micrographsToAnalyze) {
       for (const spot of micrograph.spots || []) {
-        if (spot.geometryType !== 'polygon') continue;
+        if (!isPolygonType(spot.geometryType)) continue;
         if (spot.archived) continue;
         result.push({ spot, micrograph });
       }
@@ -204,18 +204,24 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
     return result;
   }, [micrographsToAnalyze]);
 
-  // Initialize selectedSpotIds when available spots change
-  // If we have a persisted selection, intersect with available spots; otherwise select all
+  // Initialize selectedSpotIds when the dialog opens or the available spots change.
+  // If we have a persisted selection, intersect with available spots; otherwise select all.
+  // The persisted list is read from the store here instead of being a dependency: the
+  // dialog writes it on every checkbox change, and an empty list means "nothing saved"
+  // (= all), so reacting to our own writes turned Select None (or unchecking the last
+  // spot) back into Select All.
   useEffect(() => {
+    if (!open) return;
     const allIds = new Set(allPolygonSpots.map(({ spot }) => spot.id));
-    if (storeSelectedIds && storeSelectedIds.length > 0) {
+    const persistedIds = useAppStore.getState().grainAnalysisSelectedSpotIds;
+    if (persistedIds.length > 0) {
       // Keep only IDs that still exist in the current spot set
-      const persisted = new Set(storeSelectedIds.filter((id) => allIds.has(id)));
+      const persisted = new Set(persistedIds.filter((id) => allIds.has(id)));
       setSelectedSpotIds(persisted.size > 0 ? persisted : allIds);
     } else {
       setSelectedSpotIds(allIds);
     }
-  }, [allPolygonSpots, storeSelectedIds]);
+  }, [open, allPolygonSpots]);
 
   // Apply spot filter
   const spots = useMemo(() => {

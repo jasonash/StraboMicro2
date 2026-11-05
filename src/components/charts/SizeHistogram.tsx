@@ -9,6 +9,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import { Box, useTheme } from '@mui/material';
 import type { RockType } from '@/services/grainAnalysis/types';
 import { getClassificationScheme, generateHistogramBins } from '@/services/grainAnalysis/statistics';
+import { countAxis, niceTicks, sizeTickLabels } from '@/utils/countTicks';
 
 interface SizeHistogramProps {
   /** Array of size values in microns */
@@ -81,7 +82,7 @@ export function SizeHistogram({
     ctx.clearRect(0, 0, width, height);
 
     // Margins for axes
-    const margin = { top: 30, right: 20, bottom: 50, left: 60 };
+    const margin = { top: 30, right: 32, bottom: 50, left: 60 };
     const plotWidth = width - margin.left - margin.right;
     const plotHeight = height - margin.top - margin.bottom;
 
@@ -96,7 +97,10 @@ export function SizeHistogram({
     // Calculate scales
     const xMin = bins[0].min;
     const xMax = bins[bins.length - 1].max;
-    const yMax = Math.max(...bins.map(b => b.count)) * 1.1;
+    // Counts are whole numbers, so the axis ticks are too (1, 2 or 5 x 10^k apart, about five
+    // of them). Before, the top was 1.1 x the largest count split into five equal steps with
+    // rounded labels, so a 1-grain bar sat on the line labelled "2".
+    const { yMax, yStep } = countAxis(Math.max(...bins.map(b => b.count)));
 
     // Transform functions
     const xScale = (v: number): number => {
@@ -145,9 +149,8 @@ export function SizeHistogram({
       ctx.lineWidth = 1;
 
       // Horizontal grid lines
-      const yTicks = 5;
-      for (let i = 0; i <= yTicks; i++) {
-        const y = yScale((i / yTicks) * yMax);
+      for (let value = 0; value <= yMax; value += yStep) {
+        const y = yScale(value);
         ctx.beginPath();
         ctx.moveTo(margin.left, y);
         ctx.lineTo(width - margin.right, y);
@@ -189,16 +192,20 @@ export function SizeHistogram({
 
     // Create tick values
     const tickCount = 6;
-    for (let i = 0; i <= tickCount; i++) {
-      let tickValue: number;
-      if (useLogScale && xMin > 0) {
-        const logMin = Math.log10(xMin);
-        const logMax = Math.log10(xMax);
-        tickValue = Math.pow(10, logMin + (i / tickCount) * (logMax - logMin));
-      } else {
-        tickValue = xMin + (i / tickCount) * (xMax - xMin);
+    const tickValues: number[] = [];
+    if (useLogScale && xMin > 0) {
+      const logMin = Math.log10(xMin);
+      const logMax = Math.log10(xMax);
+      for (let i = 0; i <= tickCount; i++) {
+        tickValues.push(Math.pow(10, logMin + (i / tickCount) * (logMax - logMin)));
       }
+    } else {
+      // Round values (e.g. 200, 400, 600 µm or 1.14, 1.16 mm), not equal splits of the range
+      tickValues.push(...niceTicks(xMin, xMax, tickCount));
+    }
+    const tickLabels = sizeTickLabels(tickValues);
 
+    tickValues.forEach((tickValue, i) => {
       const x = xScale(tickValue);
 
       // Tick mark
@@ -208,14 +215,8 @@ export function SizeHistogram({
       ctx.stroke();
 
       // Label
-      let label: string;
-      if (tickValue >= 1000) {
-        label = (tickValue / 1000).toFixed(1) + 'mm';
-      } else {
-        label = tickValue.toFixed(0) + 'µm';
-      }
-      ctx.fillText(label, x, height - margin.bottom + 18);
-    }
+      ctx.fillText(tickLabels[i], x, height - margin.bottom + 18);
+    });
 
     // X-axis title
     ctx.font = 'bold 15px system-ui, sans-serif';
@@ -223,9 +224,7 @@ export function SizeHistogram({
 
     // Y-axis labels
     ctx.textAlign = 'right';
-    const yTicks = 5;
-    for (let i = 0; i <= yTicks; i++) {
-      const value = (i / yTicks) * yMax;
+    for (let value = 0; value <= yMax; value += yStep) {
       const y = yScale(value);
 
       // Tick mark
@@ -235,7 +234,7 @@ export function SizeHistogram({
       ctx.stroke();
 
       // Label
-      ctx.fillText(Math.round(value).toString(), margin.left - 8, y + 4);
+      ctx.fillText(value.toString(), margin.left - 8, y + 4);
     }
 
     // Y-axis title
