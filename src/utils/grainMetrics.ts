@@ -12,6 +12,7 @@
  */
 
 import type { Spot } from '../types/project-types';
+import { isPolygonType } from './spotGeometryType.ts';
 
 /**
  * Normalized coordinate point
@@ -245,7 +246,7 @@ export function calculateGrainMetrics(
   if (!spot.points || spot.points.length < 3) {
     return null;
   }
-  if (spot.geometryType !== 'polygon') {
+  if (!isPolygonType(spot.geometryType)) {
     return null;
   }
 

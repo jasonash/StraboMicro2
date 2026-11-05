@@ -51,6 +51,7 @@ import {
 } from '@/services/grainAnalysis';
 import { SizeHistogram, RoseDiagram } from '@/components/charts';
 import type { MicrographMetadata, Spot } from '@/types/project-types';
+import { isPolygonType } from '@/utils/spotGeometryType';
 
 // =============================================================================
 // Types
@@ -194,7 +195,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
 
     for (const micrograph of micrographsToAnalyze) {
       for (const spot of micrograph.spots || []) {
-        if (spot.geometryType !== 'polygon') continue;
+        if (!isPolygonType(spot.geometryType)) continue;
         if (spot.archived) continue;
         result.push({ spot, micrograph });
       }
