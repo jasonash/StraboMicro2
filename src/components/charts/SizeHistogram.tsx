@@ -9,7 +9,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import { Box, useTheme } from '@mui/material';
 import type { RockType } from '@/services/grainAnalysis/types';
 import { getClassificationScheme, generateHistogramBins } from '@/services/grainAnalysis/statistics';
-import { countAxis } from '@/utils/countTicks';
+import { countAxis, niceTicks, sizeTickLabels } from '@/utils/countTicks';
 
 interface SizeHistogramProps {
   /** Array of size values in microns */
@@ -82,7 +82,7 @@ export function SizeHistogram({
     ctx.clearRect(0, 0, width, height);
 
     // Margins for axes
-    const margin = { top: 30, right: 20, bottom: 50, left: 60 };
+    const margin = { top: 30, right: 32, bottom: 50, left: 60 };
     const plotWidth = width - margin.left - margin.right;
     const plotHeight = height - margin.top - margin.bottom;
 
@@ -192,16 +192,20 @@ export function SizeHistogram({
 
     // Create tick values
     const tickCount = 6;
-    for (let i = 0; i <= tickCount; i++) {
-      let tickValue: number;
-      if (useLogScale && xMin > 0) {
-        const logMin = Math.log10(xMin);
-        const logMax = Math.log10(xMax);
-        tickValue = Math.pow(10, logMin + (i / tickCount) * (logMax - logMin));
-      } else {
-        tickValue = xMin + (i / tickCount) * (xMax - xMin);
+    const tickValues: number[] = [];
+    if (useLogScale && xMin > 0) {
+      const logMin = Math.log10(xMin);
+      const logMax = Math.log10(xMax);
+      for (let i = 0; i <= tickCount; i++) {
+        tickValues.push(Math.pow(10, logMin + (i / tickCount) * (logMax - logMin)));
       }
+    } else {
+      // Round values (e.g. 200, 400, 600 µm or 1.14, 1.16 mm), not equal splits of the range
+      tickValues.push(...niceTicks(xMin, xMax, tickCount));
+    }
+    const tickLabels = sizeTickLabels(tickValues);
 
+    tickValues.forEach((tickValue, i) => {
       const x = xScale(tickValue);
 
       // Tick mark
@@ -211,14 +215,8 @@ export function SizeHistogram({
       ctx.stroke();
 
       // Label
-      let label: string;
-      if (tickValue >= 1000) {
-        label = (tickValue / 1000).toFixed(1) + 'mm';
-      } else {
-        label = tickValue.toFixed(0) + 'µm';
-      }
-      ctx.fillText(label, x, height - margin.bottom + 18);
-    }
+      ctx.fillText(tickLabels[i], x, height - margin.bottom + 18);
+    });
 
     // X-axis title
     ctx.font = 'bold 15px system-ui, sans-serif';

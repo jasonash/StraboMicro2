@@ -276,7 +276,8 @@ export function RoseDiagram({
   }, [sectors, orientations.length, circularStats, size, showMean, title, textColor, gridColor, haloColor]);
 
   return (
-    <Box sx={{ position: 'relative' }}>
+    // Caption to the left of the rose; it moves below when the dialog is too narrow for both
+    <Box sx={{ display: 'flex', flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
       <canvas
         ref={canvasRef}
         style={{
@@ -288,13 +289,21 @@ export function RoseDiagram({
         <Typography
           variant="caption"
           component="p"
-          sx={{ color: 'text.secondary', mt: 1, maxWidth: size, lineHeight: 1.4 }}
+          sx={{ color: 'text.secondary', flex: '1 1 200px', maxWidth: 260, lineHeight: 1.5, m: 0 }}
         >
           Long-axis orientation of each grain, measured counterclockwise from the image
           horizontal (0° = horizontal, 90° = vertical). A long axis has no front or back, so each
-          10° sector is drawn on both sides of the center. Equal-area rose: a petal's area is
-          proportional to its number of grains; rings are labelled with grain counts.
-          {showMean && ' Red line (when the grains share a preferred orientation): mean orientation; dashed arc and ±: circular standard deviation (about 1 sd).'}
+          10° sector is drawn on both sides of the center.
+          <br /><br />
+          Equal-area rose: a petal&apos;s area is proportional to its number of grains; rings are
+          labelled with grain counts.
+          {showMean && (
+            <>
+              <br /><br />
+              Red line (when the grains share a preferred orientation): mean orientation; dashed
+              arc and ±: circular standard deviation (about 1 sd).
+            </>
+          )}
         </Typography>
       )}
     </Box>

@@ -11,7 +11,7 @@
 
 import { calculateEllipseMetrics } from '../src/utils/grainMetrics.ts';
 import { calculateCircularMean, generateRoseSectors } from '../src/services/grainAnalysis/statistics.ts';
-import { countAxis, roseRings, equalAreaRadius } from '../src/utils/countTicks.ts';
+import { countAxis, roseRings, equalAreaRadius, sizeTickLabels, niceTicks } from '../src/utils/countTicks.ts';
 
 let failures = 0;
 let passes = 0;
@@ -137,6 +137,24 @@ const r1 = equalAreaRadius(1, 4, 100), r4 = equalAreaRadius(4, 4, 100);
 close('outer count reaches the outer radius', r4, 100);
 close('a quarter of the count is half the radius (a quarter of the area)', r1, 50);
 eq('zero count has no petal', equalAreaRadius(0, 4, 100), 0);
+
+// ---- Size axis labels: neighbouring ticks never read the same ----
+const ticks = (a: number, b: number) => Array.from({ length: 7 }, (_, i) => a + (i / 6) * (b - a));
+eq('1.09-1.17 mm', sizeTickLabels(ticks(1090, 1170)).join(' '), '1.09mm 1.10mm 1.12mm 1.13mm 1.14mm 1.16mm 1.17mm');
+eq('2 um - 1.17 mm (Peter)', sizeTickLabels(ticks(2, 1170)).join(' '), '2µm 197µm 391µm 586µm 781µm 975µm 1.2mm');
+eq('wide mm range keeps one decimal', sizeTickLabels(ticks(1000, 7000)).join(' '), '1.0mm 2.0mm 3.0mm 4.0mm 5.0mm 6.0mm 7.0mm');
+eq('narrow um range gets decimals', sizeTickLabels(ticks(10, 11.2)).join(' '), '10.0µm 10.2µm 10.4µm 10.6µm 10.8µm 11.0µm 11.2µm');
+for (const [a, b] of [[1090, 1170], [2, 1170], [10, 11.2], [500, 1500], [3.1, 3.4]]) {
+  const l = sizeTickLabels(ticks(a, b));
+  eq(`labels ${a}-${b} all differ from their neighbours`, l.every((x, i) => i === 0 || x !== l[i - 1]), true);
+}
+
+// ---- Linear size axis ticks at round values ----
+eq('ticks 1090-1170', niceTicks(1090, 1170, 6).join(' '), '1100 1120 1140 1160');
+eq('ticks 2-1170 (Peter)', niceTicks(2, 1170, 6).join(' '), '200 400 600 800 1000');
+eq('ticks 1130-1200', sizeTickLabels(niceTicks(1130, 1200, 6)).join(' '), '1.14mm 1.16mm 1.18mm 1.20mm');
+eq('ticks 0.1-0.7 have no float noise', niceTicks(0.1, 0.7, 6).join(' '), '0.1 0.2 0.3 0.4 0.5 0.6 0.7');
+eq('equal ends give one tick', niceTicks(5, 5, 6).join(' '), '5');
 
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);
