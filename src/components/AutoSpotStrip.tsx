@@ -13,14 +13,8 @@ import { isSpotTool } from '@/store/useAppStore';
 import { useCanCreate } from '@/hooks/usePermissions';
 import { autoSpotDraft } from '@/utils/newSpot';
 import { chosenPattern } from '@/utils/autoSpotName';
-import type { PresetWithScope } from '@/types/preset-types';
 
 export const ALT_KEY_NAME = typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent) ? 'Option' : 'Alt';
-
-/** Presets offered in the strip: those with a spot name, plus the chosen one (a key may pick one without) */
-export function autoSpotPresetOptions(all: PresetWithScope[], chosenId: string | null): PresetWithScope[] {
-  return all.filter((p) => (p.spotNamePattern?.trim() ?? '') !== '' || p.id === chosenId);
-}
 
 /** The strip when auto spot mode applies (auto on, a spot tool, a micrograph, may create spots), else nothing */
 export function AutoSpotStrip() {
@@ -47,9 +41,10 @@ function AutoSpotStripContent() {
   useAppStore((s) => s.globalPresets);
   const getAllPresetsWithScope = useAppStore((s) => s.getAllPresetsWithScope);
 
-  const all = getAllPresetsWithScope();
-  const preset = autoSpotPresetId ? all.find((p) => p.id === autoSpotPresetId) ?? null : null;
-  const options = autoSpotPresetOptions(all, preset?.id ?? null);
+  // Every preset is offered (2026-11-11: a user's presets without a Spot Name
+  // were hidden); one without a Spot Name uses the project's pattern
+  const options = getAllPresetsWithScope();
+  const preset = autoSpotPresetId ? options.find((p) => p.id === autoSpotPresetId) ?? null : null;
   const draft = autoSpotDraft(project, activeMicrographId, preset);
 
   // Keys 1-9 choose the preset bound to them (only while the strip shows:
