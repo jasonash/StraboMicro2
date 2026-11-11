@@ -128,6 +128,34 @@ test('Preset by key 1: a closed polygon is Ol-1 with the preset color and minera
   await expect(nextLabel(ana)).toHaveText('Next: Grain 1');
 });
 
+test('A preset with no Spot Name is in the picker: its data applies, the name uses the project default', async ({ launch, project }) => {
+  const { p, ana } = await start(launch, project, 'E2E Auto No Pattern');
+
+  await ana.caption('a project preset Quartz with data but no Spot Name; project default Grain {n}');
+  await ana.state(new Function('e', `
+    const st = e.app.getState();
+    st.createPreset({ id: 'preset-qz', name: 'Quartz', createdAt: 'x', modifiedAt: 'x',
+      data: { color: '0xcc3333ff', mineralogy: { minerals: [{ name: 'quartz' }] } } }, 'project');
+    e.app.setState({ project: { ...e.app.getState().project, spotNamePattern: 'Grain {n}' } });`) as never);
+
+  await autoButton(ana).click();
+  await ana.page.getByRole('button', { name: 'Point tool' }).click();
+  await ana.caption('picks Quartz from the strip (listed with the project pattern)');
+  await ana.page.getByRole('combobox', { name: 'Auto spot preset' }).click();
+  const quartz = ana.page.getByRole('option', { name: /Quartz/ });
+  await expect(quartz).toContainText('Grain {n}');
+  await quartz.click();
+  await expect(nextLabel(ana)).toHaveText('Next: Grain 1');
+
+  // The menu's backdrop takes clicks until its close animation ends
+  await expect(ana.page.locator('.MuiMenu-root')).toHaveCount(0);
+
+  await clickViewer(ana, -120, -60);
+  await expect(nextLabel(ana)).toHaveText('Next: Grain 2');
+  expect(await spotByName(ana, p.micrographId, 'Grain 1')).toMatchObject({
+    geometryType: 'point', color: '0xcc3333ff', minerals: ['quartz'], appliedPresetIds: ['preset-qz'] });
+});
+
 test('Numbering covers the sample: a Spot 7 on another micrograph of the sample makes the next Spot 8', async ({ launch, project }) => {
   const { p, ana } = await start(launch, project, 'E2E Auto Sample');
 
