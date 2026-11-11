@@ -147,7 +147,10 @@ test('A preset with no Spot Name is in the picker: its data applies, the name us
   await quartz.click();
   await expect(nextLabel(ana)).toHaveText('Next: Grain 1');
 
-  await clickViewer(ana, 0, 0);
+  // The menu's backdrop takes clicks until its close animation ends
+  await expect(ana.page.locator('.MuiMenu-root')).toHaveCount(0);
+
+  await clickViewer(ana, -120, -60);
   await expect(nextLabel(ana)).toHaveText('Next: Grain 2');
   expect(await spotByName(ana, p.micrographId, 'Grain 1')).toMatchObject({
     geometryType: 'point', color: '0xcc3333ff', minerals: ['quartz'], appliedPresetIds: ['preset-qz'] });
