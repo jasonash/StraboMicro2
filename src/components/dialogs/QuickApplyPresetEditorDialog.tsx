@@ -48,7 +48,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { MuiColorInput } from 'mui-color-input';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '@/store';
-import { spotNameFor } from '@/utils/autoSpotName';
+import { chosenPattern, spotNameFor } from '@/utils/autoSpotName';
 import type { QuickApplyPreset, PresetData, PresetScope } from '@/types/preset-types';
 import { getPresetSummary, PRESET_FEATURE_FIELDS, PRESET_FEATURE_DISPLAY_NAMES } from '@/types/preset-types';
 import type {
@@ -488,7 +488,7 @@ export function QuickApplyPresetEditorDialog({
               helperText={
                 spotNamePattern.trim()
                   ? `{n} is the number. Names look like: ${spotNameFor(spotNamePattern, 1)}, ${spotNameFor(spotNamePattern, 2)}, ...`
-                  : 'Auto spot mode names spots made with this preset; {n} is the number. Presets with a spot name appear in its picker.'
+                  : `Auto spot mode names spots made with this preset; {n} is the number. Leave empty to use the project's Default Spot Name, now ${chosenPattern(null, project?.spotNamePattern)} (File > Edit Project).`
               }
             />
 

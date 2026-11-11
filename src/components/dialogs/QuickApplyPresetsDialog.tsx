@@ -65,6 +65,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '@/store';
 import type { QuickApplyPreset, PresetScope } from '@/types/preset-types';
 import { getPresetSummary } from '@/types/preset-types';
+import { chosenPattern } from '@/utils/autoSpotName';
 import { buildPresetFile, parsePresetFile, presetNameConflicts } from '@/utils/presetLibrary';
 import type { PresetConflictChoice, PresetCopyPlan } from '@/utils/presetLibrary';
 import { QuickApplyPresetEditorDialog } from './QuickApplyPresetEditorDialog';
@@ -131,6 +132,7 @@ function SortablePresetItem({
   };
 
   const summaryItems = getPresetSummary(preset);
+  const projectSpotNamePattern = useAppStore((state) => state.project?.spotNamePattern);
 
   return (
     <ListItem
@@ -166,9 +168,16 @@ function SortablePresetItem({
           </Box>
         }
         secondary={
-          summaryItems.length > 0
-            ? summaryItems.join(', ')
-            : preset.description || 'No data configured'
+          <>
+            {summaryItems.length > 0
+              ? summaryItems.join(', ')
+              : preset.description || 'No data configured'}
+            <Box component="span" data-testid="preset-spot-name" sx={{ display: 'block' }}>
+              {preset.spotNamePattern?.trim()
+                ? `Spot name: ${preset.spotNamePattern.trim()}`
+                : `Spot name: project default (${chosenPattern(null, projectSpotNamePattern)})`}
+            </Box>
+          </>
         }
       />
 
