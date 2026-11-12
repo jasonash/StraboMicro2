@@ -9,7 +9,10 @@
  * Micrograph) or an image file. Opened by "Stitch Images..." in New Micrograph or the New Project
  * wizard (purpose "pick"), the last step hands the mosaic back to that dialog.
  *
- * So far the review is a viewer: images can be left out or put back, not yet moved by hand.
+ * On the review screen the layout can be changed by hand (stitchEdit.ts): an image dragged,
+ * turned or nudged on the canvas, an image or group that was not placed dragged in from the
+ * list, images left out; a drop is followed by a search for the exact fit there (snap). Undo,
+ * Redo and Reset to Automatic cover every change.
  *
  * Design: docs/image-stitcher-design.md
  */
@@ -41,14 +44,21 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { CheckCircle, Close, ErrorOutlined, RadioButtonUnchecked, RemoveCircleOutlined, Undo } from '@mui/icons-material';
+import {
+  AddCircleOutlined, CheckCircle, Close, ErrorOutlined, RadioButtonUnchecked, Redo, RemoveCircleOutlined, RestartAlt, Undo, WarningAmber,
+} from '@mui/icons-material';
 import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 import { mosaicName } from '@/utils/mosaicName';
 import {
   estimateText, groupText, overlapsText, placedText, progressLines, sizeText, skippedText, tooManyText,
   type ProgressStage,
 } from '@/utils/stitchText';
-import { coveredRectangle, hasEmptyAreas, type StitchLayout } from '@/services/stitch/stitchLayout';
+import type { AffineMatrix } from '@/utils/affineTransform';
+import { coveredRectangle, groupOfTile, hasEmptyAreas, type Overlap, type StitchGroup, type StitchLayout } from '@/services/stitch/stitchLayout';
+import {
+  change, deltaInGroup, dropPlacement, leaveOut, mainGroup, moveInMosaic, otherGroups as groupsNotPlaced, pieceOf, placeOnMosaic, putBack, redo,
+  resetTile, separateGroup, snapSides, startEdit, startHistory, tileStatuses, undo, type EditHistory, type StitchEdit,
+} from '@/services/stitch/stitchEdit';
 import { ESTIMATE_FROM, MAX_IMAGES, estimateSeconds } from '@/services/stitch/stitch';
 import { workerCount, type StitchRun } from '@/services/stitch/stitchPool';
 import {
@@ -57,7 +67,7 @@ import {
 } from '@/services/stitch/stitchApp';
 import { useAppStore } from '@/store';
 import { useCanCreate } from '@/hooks/usePermissions';
-import { StitchReviewCanvas } from './StitchReviewCanvas';
+import { STITCH_DRAG_TYPE, StitchReviewCanvas } from './StitchReviewCanvas';
 
 interface ImageStitcherDialogProps {
   open: boolean;
@@ -105,8 +115,18 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
   const [problem, setProblem] = useState<string | null>(null);
   /** Tile n of the layout is fitted[n] */
   const [fitted, setFitted] = useState<PreparedImage[]>([]);
-  const [layout, setLayout] = useState<StitchLayout | null>(null);
-  const [leftOut, setLeftOut] = useState<ReadonlySet<number>>(new Set());
+  /** What the automatic pass found (Reset to Automatic goes back to it) */
+  const [automatic, setAutomatic] = useState<StitchLayout | null>(null);
+  /** The layout as changed by hand since, with its undo steps */
+  const [history, setHistory] = useState<EditHistory | null>(null);
+  /** An exact fit is being looked for where an image was dropped */
+  const [snapping, setSnapping] = useState(false);
+  /** What the last change by hand came to ("Snapped to fit.") */
+  const [message, setMessage] = useState<string | null>(null);
+  const viewCenter = useRef<(() => { x: number; y: number }) | null>(null);
+  const edit = history ? history.now : null;
+  const layout = edit ? edit.layout : null;
+  const leftOut: ReadonlySet<number> = useMemo(() => edit?.leftOut ?? new Set<number>(), [edit]);
   const [selected, setSelected] = useState<number | null>(null);
   const [fill, setFill] = useState<'black' | 'white'>('black');
   const [cropOn, setCropOn] = useState(false);
@@ -154,9 +174,11 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
     setStep('choose');
     changeRows(() => []);
     setProblem(null);
-    setLayout(null);
+    setAutomatic(null);
+    setHistory(null);
+    setSnapping(false);
+    setMessage(null);
     setFitted([]);
-    setLeftOut(new Set());
     setSelected(null);
     setFill('black');
     setCropOn(false);
@@ -261,8 +283,9 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
         return;
       }
       setFitted(ready);
-      setLayout(result.layout);
-      setLeftOut(new Set());
+      setAutomatic(result.layout);
+      setHistory(startHistory(startEdit(result.layout)));
+      setMessage(null);
       setSelected(null);
       setCropOn(false);
       setStep('review');
@@ -289,28 +312,103 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
 
   // ---------------------------------------------------------------- step 3: review
 
-  const main = layout ? layout.groups[0] : null;
+  const main = edit ? mainGroup(edit) : null;
   const frame = useMemo(() => (layout && main ? frameOf(layout, main, leftOut) : null), [layout, main, leftOut]);
   const empty = useMemo(() => (layout && frame ? hasEmptyAreas(layout, frame) : false), [layout, frame]);
   const cropRect = useMemo(() => (layout && frame && empty ? coveredRectangle(layout, frame) : null), [layout, frame, empty]);
   const crop = cropOn && cropRect ? cropRect : null;
   const included = main ? main.tiles.filter((t) => !leftOut.has(t)) : [];
-  const placedCount = main && main.tiles.length > 1 ? main.tiles.length : 0;
-  const otherGroups = layout ? layout.groups.slice(1) : [];
+  /** How many images the automatic pass fitted together (0: no two of them) */
+  const placedCount = automatic && automatic.groups[0].tiles.length > 1 ? automatic.groups[0].tiles.length : 0;
+  const otherGroups = edit ? groupsNotPlaced(edit) : [];
+  const statuses = useMemo(() => (edit ? tileStatuses(edit) : {}), [edit]);
+  const piece = useMemo(() => (edit && selected !== null ? pieceOf(edit, selected) : undefined), [edit, selected]);
+
+  /** A change by hand: one undo step (changes with the same joins text one after the other are one step) */
+  const applyEdit = (next: StitchEdit, joins?: string) => {
+    setHistory((old) => (old ? change(old, next, joins) : old));
+  };
 
   const toggleLeftOut = (tile: number) => {
-    setLeftOut((old) => {
-      const next = new Set(old);
-      if (next.has(tile)) next.delete(tile);
-      else next.add(tile);
-      return next;
-    });
+    if (!edit) return;
+    setMessage(null);
+    applyEdit(edit.leftOut.has(tile) ? putBack(edit, tile) : leaveOut(edit, tile));
   };
+
+  /** The exact fit near where tiles were dropped, looked for in a worker; null when there is none */
+  const findSnap = async (moved: StitchGroup, target: StitchGroup, rough: AffineMatrix): Promise<{ groupToTarget: AffineMatrix; overlaps: Overlap[] } | null> => {
+    if (!layout || !run.current || target.tiles.length === 0) return null;
+    setSnapping(true);
+    setMessage('Looking for an exact fit...');
+    try {
+      return await run.current.snap(layout, moved, target, rough);
+    } catch (error) {
+      console.warn('[Stitch] Snap failed:', error);
+      return null;
+    } finally {
+      setSnapping(false);
+    }
+  };
+
+  const SNAPPED = 'Snapped to fit.';
+  const BY_HAND = 'No exact fit was found there. The image stays where you put it, marked as placed by hand.';
+
+  /** Tiles of the mosaic dragged, turned or nudged on the canvas (delta in saved mosaic pixels) */
+  const handleMove = async (tiles: number[], deltaInMosaic: AffineMatrix, how: 'drag' | 'nudge') => {
+    if (!edit || !frame || snapping) return;
+    const mine = life.current;
+    const delta = deltaInGroup(edit, frame, deltaInMosaic);
+    if (!delta) return;
+    if (how === 'nudge') {
+      setMessage(null);
+      applyEdit(moveInMosaic(edit, tiles, delta, null), `nudge ${tiles.join()}`);
+      return;
+    }
+    const sides = snapSides(edit, tiles);
+    const snap = sides ? await findSnap(sides.moved, sides.target, delta) : null;
+    if (life.current !== mine) return;
+    applyEdit(snap ? moveInMosaic(edit, tiles, snap.groupToTarget, snap.overlaps) : moveInMosaic(edit, tiles, delta, null));
+    setMessage(snap ? SNAPPED : BY_HAND);
+  };
+
+  /** An image or group that is not part of the mosaic dropped on it at a point (saved mosaic pixels) */
+  const handlePlace = async (tile: number, point?: { x: number; y: number }) => {
+    if (!edit || !frame || !main || snapping) return;
+    const mine = life.current;
+    const group = groupOfTile(edit.layout, tile);
+    if (group === main) return;
+    const rough = dropPlacement(edit, frame, group, point ?? viewCenter.current?.() ?? { x: frame.width / 2, y: frame.height / 2 });
+    if (!rough) return;
+    const targetTiles = main.tiles.filter((t) => !edit.leftOut.has(t));
+    const target: StitchGroup = { tiles: targetTiles, placements: Object.fromEntries(targetTiles.map((t) => [t, main.placements[t]])) };
+    const snap = await findSnap(group, target, rough);
+    if (life.current !== mine) return;
+    applyEdit(placeOnMosaic(edit, group, snap ? snap.groupToTarget : rough, snap ? snap.overlaps : null));
+    setSelected(tile);
+    setMessage(snap ? SNAPPED : BY_HAND);
+  };
+
+  const handleUndo = () => {
+    setMessage(null);
+    setHistory((old) => (old ? undo(old) : old));
+  };
+  const handleRedo = () => {
+    setMessage(null);
+    setHistory((old) => (old ? redo(old) : old));
+  };
+  const handleResetAll = () => {
+    if (!automatic || !edit) return;
+    setMessage(null);
+    setSelected(null);
+    applyEdit(startEdit(automatic));
+  };
+  const isChanged = !!edit && !!automatic && (edit.layout !== automatic || edit.leftOut.size > 0);
 
   const handleBack = () => {
     run.current?.close();
     run.current = null;
-    setLayout(null);
+    setHistory(null);
+    setAutomatic(null);
     setStep('choose');
   };
 
@@ -399,7 +497,7 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
 
   // ---------------------------------------------------------------- closing
 
-  const busy = step === 'fitting' || step === 'building' || saving || handing;
+  const busy = step === 'fitting' || step === 'building' || saving || handing || snapping;
   const requestClose = () => {
     if (busy) return;
     // A fitted layout (and later, placements made by hand) is work worth a question
@@ -417,25 +515,56 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
     : step === 'building' ? 'Building the mosaic'
     : 'The mosaic is ready';
 
-  const tileRow = (tile: number, action: 'leave-out' | 'put-back' | null) => {
+  /** One image in the list. where: its section. A row of "Not placed" can be dragged onto the canvas. */
+  const tileRow = (tile: number, where: 'placed' | 'not-placed' | 'left-out') => {
     const image = fitted[tile];
-    if (!image) return null;
+    if (!image || !edit) return null;
+    const name = fileName(image.path);
+    const status = where === 'placed' ? statuses[tile] : undefined;
     return (
       <ListItem
         key={tile}
         disablePadding
         data-testid="stitch-tile-row"
-        secondaryAction={action && (
-          <Tooltip title={action === 'leave-out' ? 'Leave out of the mosaic' : 'Put back into the mosaic'}>
-            <IconButton edge="end" size="small" aria-label={action === 'leave-out' ? `Leave out ${fileName(image.path)}` : `Put back ${fileName(image.path)}`} onClick={() => toggleLeftOut(tile)}>
-              {action === 'leave-out' ? <RemoveCircleOutlined fontSize="small" /> : <Undo fontSize="small" />}
-            </IconButton>
-          </Tooltip>
+        data-status={status ?? ''}
+        draggable={where === 'not-placed' && !snapping}
+        onDragStart={(event) => {
+          event.dataTransfer.setData(STITCH_DRAG_TYPE, String(tile));
+          event.dataTransfer.effectAllowed = 'move';
+        }}
+        secondaryAction={where !== 'not-placed' && (
+          <Stack direction="row">
+            {where === 'placed' && edit.changed.has(tile) && automatic && (
+              <Tooltip title="Reset to automatic">
+                <span>
+                  <IconButton size="small" aria-label={`Reset ${name} to automatic`} disabled={snapping} onClick={() => { setMessage(null); applyEdit(resetTile(edit, automatic, tile)); }}>
+                    <RestartAlt fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            )}
+            <Tooltip title={where === 'placed' ? 'Leave out of the mosaic' : 'Put back into the mosaic'}>
+              <span>
+                <IconButton edge="end" size="small" aria-label={where === 'placed' ? `Leave out ${name}` : `Put back ${name}`} disabled={snapping} onClick={() => toggleLeftOut(tile)}>
+                  {where === 'placed' ? <RemoveCircleOutlined fontSize="small" /> : <Undo fontSize="small" />}
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Stack>
         )}
       >
-        <ListItemButton dense selected={selected === tile} onClick={() => setSelected(selected === tile ? null : tile)} sx={{ gap: 1, pr: 5 }}>
-          <Box component="img" src={image.thumbnail} alt="" sx={{ width: 36, height: 28, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0 }} />
-          <Typography variant="body2" noWrap title={image.path}>{fileName(image.path)}</Typography>
+        <ListItemButton dense selected={selected === tile} onClick={() => setSelected(selected === tile ? null : tile)} sx={{ gap: 1, pr: where === 'placed' && edit.changed.has(tile) ? 9 : 5 }}>
+          <Box component="img" src={image.thumbnail} alt="" draggable={false} sx={{ width: 36, height: 28, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0 }} />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" noWrap title={image.path}>{name}</Typography>
+            {status === 'weak' && (
+              <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', color: 'warning.main' }}>
+                <WarningAmber sx={{ fontSize: 14 }} />
+                <Typography variant="caption">Weak overlap: check this seam</Typography>
+              </Stack>
+            )}
+            {status === 'hand' && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Placed by hand</Typography>}
+          </Box>
         </ListItemButton>
       </ListItem>
     );
@@ -560,40 +689,76 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
           </DialogContent>
         )}
 
-        {step === 'review' && layout && (
+        {step === 'review' && layout && edit && main && (
           <DialogContent sx={{ pt: 0 }}>
-            <Typography variant="subtitle1" sx={{ mb: 1 }} data-testid="stitch-placed">{placedText(placedCount, layout.tiles.length)}</Typography>
-            <Stack direction="row" spacing={2} sx={{ height: '62vh', minHeight: 360 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
+              <Typography variant="subtitle1" data-testid="stitch-placed" sx={{ flex: 1 }}>{placedText(placedCount, layout.tiles.length)}</Typography>
+              <Button size="small" startIcon={<Undo />} onClick={handleUndo} disabled={snapping || !history || history.past.length === 0}>Undo</Button>
+              <Button size="small" startIcon={<Redo />} onClick={handleRedo} disabled={snapping || !history || history.future.length === 0}>Redo</Button>
+              <Button size="small" startIcon={<RestartAlt />} onClick={handleResetAll} disabled={snapping || !isChanged}>Reset to Automatic</Button>
+            </Stack>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Click an image to select it. Drag the selected image to move it, turn it with the handle above it, or nudge it with the arrow keys. Drag an image that was not placed from the list onto the mosaic.
+            </Typography>
+            <Stack direction="row" spacing={2} sx={{ height: '58vh', minHeight: 340 }}>
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <StitchReviewCanvas session={session} images={fitted} frame={placedCount > 0 ? frame : null} selected={selected} onSelect={setSelected} crop={crop} />
+                <StitchReviewCanvas
+                  session={session}
+                  images={fitted}
+                  frame={frame}
+                  selected={selected}
+                  onSelect={setSelected}
+                  crop={crop}
+                  statuses={statuses}
+                  piece={piece}
+                  busy={snapping}
+                  onMove={(tiles, delta, how) => void handleMove(tiles, delta, how)}
+                  onDropGroup={(tile, point) => void handlePlace(tile, point)}
+                  viewCenterRef={viewCenter}
+                />
               </Box>
-              <Box sx={{ width: 300, flexShrink: 0, border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'auto' }}>
+              <Box sx={{ width: 320, flexShrink: 0, border: 1, borderColor: 'divider', borderRadius: 1, overflow: 'auto' }}>
                 <List dense disablePadding>
-                  <ListSubheader sx={{ lineHeight: '32px' }}>Placed ({placedCount > 0 ? included.length : 0})</ListSubheader>
-                  {placedCount > 0 && included.map((tile) => tileRow(tile, 'leave-out'))}
+                  <ListSubheader sx={{ lineHeight: '32px' }}>Placed ({included.length})</ListSubheader>
+                  {included.map((tile) => tileRow(tile, 'placed'))}
                   <ListSubheader sx={{ lineHeight: '32px' }}>
-                    Not placed ({placedCount > 0 ? otherGroups.reduce((sum, g) => sum + g.tiles.length, 0) : layout.tiles.length})
+                    Not placed ({otherGroups.reduce((sum, g) => sum + g.tiles.length, 0)})
                   </ListSubheader>
-                  {(placedCount > 0 ? otherGroups : layout.groups).map((group) => (
+                  {otherGroups.map((group) => (
                     <React.Fragment key={group.tiles[0]}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 2, pt: 0.5 }}>{groupText(group.tiles.length)}</Typography>
-                      {group.tiles.map((tile) => tileRow(tile, null))}
+                      <Stack direction="row" sx={{ alignItems: 'center', px: 2, pt: 0.5 }} data-testid="stitch-group">
+                        <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>{groupText(group.tiles.length)}</Typography>
+                        {group.tiles.length > 1 && (
+                          <Button size="small" disabled={snapping} onClick={() => { setMessage(null); applyEdit(separateGroup(edit, group)); }} sx={{ minWidth: 0, py: 0 }}>Separate</Button>
+                        )}
+                        <Tooltip title="Place on the mosaic, in the middle of the view (or drag it there)">
+                          <span>
+                            <IconButton size="small" aria-label={`Place ${fileName(fitted[group.tiles[0]]?.path ?? '')} on the mosaic`} disabled={snapping || !frame} onClick={() => void handlePlace(group.tiles[0])}>
+                              <AddCircleOutlined fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </Stack>
+                      {group.tiles.map((tile) => tileRow(tile, 'not-placed'))}
                     </React.Fragment>
                   ))}
-                  <ListSubheader sx={{ lineHeight: '32px' }}>Left out ({placedCount > 0 ? main!.tiles.length - included.length : 0})</ListSubheader>
-                  {placedCount > 0 && main!.tiles.filter((t) => leftOut.has(t)).map((tile) => tileRow(tile, 'put-back'))}
+                  <ListSubheader sx={{ lineHeight: '32px' }}>Left out ({main.tiles.length - included.length})</ListSubheader>
+                  {main.tiles.filter((t) => leftOut.has(t)).map((tile) => tileRow(tile, 'left-out'))}
                 </List>
               </Box>
             </Stack>
-            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mt: 1.5, minHeight: 40, flexWrap: 'wrap' }}>
-              {placedCount > 0 && frame && included.length > 0 && (
+            <Typography variant="body2" color="text.secondary" data-testid="stitch-message" sx={{ mt: 1, minHeight: 20 }}>
+              {message ?? ' '}
+            </Typography>
+            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', mt: 0.5, minHeight: 40, flexWrap: 'wrap' }}>
+              {frame && included.length > 1 && (
                 <Typography variant="body2" data-testid="stitch-size">
                   {crop
                     ? sizeText({ fullWidth: crop.width / frame.scale, fullHeight: crop.height / frame.scale, width: crop.width, height: crop.height, scale: frame.scale })
                     : sizeText(frame)}
                 </Typography>
               )}
-              {placedCount > 0 && empty && (
+              {frame && included.length > 1 && empty && (
                 <>
                   <Stack direction="row" spacing={1} sx={{ alignItems: 'center', visibility: crop ? 'hidden' : 'visible' }}>
                     <Typography variant="body2">Fill empty areas with</Typography>
@@ -611,9 +776,9 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
                 </>
               )}
             </Stack>
-            {placedCount === 0 && (
+            {placedCount === 0 && included.length < 2 && (
               <Alert severity="warning" sx={{ mt: 1 }}>
-                No two of these images were found to overlap. Check that they show neighboring parts of the same area with some overlap, under the same lighting.
+                No two of these images were found to overlap. Check that they show neighboring parts of the same area with some overlap, under the same lighting. You can also place them by hand: drag an image from the list onto the canvas.
               </Alert>
             )}
             {problem && <Alert severity="error" sx={{ mt: 1 }}>{problem}</Alert>}
@@ -680,10 +845,10 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
           )}
           {step === 'review' && (
             <>
-              <Button onClick={handleBack}>Back</Button>
+              <Button onClick={handleBack} disabled={snapping}>Back</Button>
               <Box sx={{ flex: 1 }} />
-              <Button onClick={requestClose}>Cancel</Button>
-              <Button variant="contained" onClick={handleBuild} disabled={placedCount === 0 || included.length === 0}>Build</Button>
+              <Button onClick={requestClose} disabled={snapping}>Cancel</Button>
+              <Button variant="contained" onClick={handleBuild} disabled={snapping || included.length < 2}>Build</Button>
             </>
           )}
           {step === 'building' && <Button onClick={() => void window.api?.stitch.cancelBuild(session)}>Cancel</Button>}
@@ -711,7 +876,7 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
         <DialogTitle>Discard this mosaic?</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
-            {step !== 'done' ? 'The fitted layout will be lost.'
+            {step !== 'done' ? (isChanged ? 'The fitted layout and the changes you made to it will be lost.' : 'The fitted layout will be lost.')
               : savedTo ? 'The mosaic will not be added to the project.'
               : purpose === 'pick' || offersProject ? 'The mosaic has not been added to the project or saved. It will be lost.'
               : 'The mosaic has not been saved. It will be lost.'}

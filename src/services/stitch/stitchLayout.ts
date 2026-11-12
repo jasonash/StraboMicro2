@@ -471,6 +471,35 @@ export function separateTile(layout: StitchLayout, tile: number): StitchLayout {
   return { ...layout, groups, overlaps };
 }
 
+/**
+ * Tiles of one group moved by hand within it (drag, turn, nudge, or the snap after a drop).
+ * delta: a move in the group's frame, applied to every moved tile. The overlaps between a moved
+ * tile and one that stayed no longer describe where it is: they go, and newOverlaps (what a
+ * snap found; none when placed by hand) take their place. Overlaps among the moved tiles stay.
+ */
+export function moveTiles(layout: StitchLayout, tiles: number[], delta: AffineMatrix, newOverlaps: Overlap[] = []): StitchLayout {
+  if (tiles.length === 0) return layout;
+  const group = groupOfTile(layout, tiles[0]);
+  const moved = new Set(tiles.filter((t) => group.placements[t] !== undefined));
+  const placements: Record<number, AffineMatrix> = { ...group.placements };
+  for (const t of moved) placements[t] = multiply(delta, group.placements[t]);
+  const overlaps = layout.overlaps.filter((o) => moved.has(o.a) === moved.has(o.b));
+  return {
+    ...layout,
+    groups: layout.groups.map((g) => (g === group ? { tiles: group.tiles, placements } : g)),
+    overlaps: [...overlaps, ...newOverlaps],
+  };
+}
+
+/** Group frame -> saved mosaic pixels, for a group and a frame made from it (null: no tile of the group is in the frame) */
+export function groupToMosaic(group: StitchGroup, frame: MosaicFrame): AffineMatrix | null {
+  for (const t of group.tiles) {
+    const m = frame.toMosaic[t];
+    if (m) return multiply(m, invert(group.placements[t]));
+  }
+  return null;
+}
+
 /** Least-squares move-turn-resize of a moved group onto its target from the points a snap matched */
 export function fitGroupToTarget(
   found: Overlap[],

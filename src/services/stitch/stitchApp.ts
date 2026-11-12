@@ -208,6 +208,9 @@ export async function handOverMosaic(session: string, name: string, mosaicScale?
 /** Where a mosaic goes in the project: a new reference micrograph of a sample, or an associated micrograph on a parent */
 export type MosaicTarget = { sampleId: string; parentMicrographId: null } | { sampleId: null; parentMicrographId: string };
 
+/** Long side of the sharper copy the review canvas loads for a tile looked at closely (the whole preview copy, stitchService PREVIEW_SIDE) */
+export const SHARP_PREVIEW_SIDE = 2048;
+
 /** Long side of the copies the review canvas draws, by how many images there are (memory on screen stays bounded) */
 export function canvasPreviewSide(count: number): number {
   if (count <= 12) return 1024;

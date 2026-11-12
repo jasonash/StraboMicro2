@@ -22,10 +22,14 @@ import sharp from 'sharp';
 import { apply, fitSimilarity, invert, memorySource, multiply, type GrayImage, type OpenCV } from '../src/services/autoPlace/placementMatch.ts';
 import type { AffineMatrix } from '../src/utils/affineTransform.ts';
 import {
-  coveredRectangle, fitGroupToTarget, groupOfTile, groupsOf, hasEmptyAreas, joinGroups, mosaicFrame, mosaicPixelsPerUnit, otherMagnifications, placeGroup,
+  coveredRectangle, fitGroupToTarget, groupOfTile, groupsOf, groupToMosaic, hasEmptyAreas, joinGroups, mosaicFrame, mosaicPixelsPerUnit, otherMagnifications, placeGroup,
   rateSeams, separateTile, sizeAndTurn, solveLayout, solveLinear, thinPairs, POINTS_KEPT,
   type Overlap, type StitchLayout, type StitchTile,
 } from '../src/services/stitch/stitchLayout.ts';
+import {
+  change, deltaInGroup, dropPlacement, leaveOut, mainGroup, moveInMosaic, otherGroups, pieceOf, placeOnMosaic, putBack, redo, resetTile,
+  separateGroup, snapSides, startEdit, startHistory, tileStatuses, undo, type EditHistory, type StitchEdit,
+} from '../src/services/stitch/stitchEdit.ts';
 import { hasGraphics, matchPair, snapGroup, tileFeatures, type TileFeatures } from '../src/services/stitch/stitchMatch.ts';
 import { hardPairs, quickPairs, stitchTiles, unplacedTiles, type StitchProgress } from '../src/services/stitch/stitch.ts';
 import { mosaicName } from '../src/utils/mosaicName.ts';
@@ -317,6 +321,133 @@ if (wanted('math')) {
   const layoutLines = progressLines({ stage: 'layout', done: 0, total: 1 });
   check('progressLines: the layout has no count', layoutLines[2].state === 'now' && layoutLines[2].count === '' && layoutLines[2].percent === null && layoutLines.length === 3, layoutLines);
   check('progressLines: reading', progressLines({ stage: 'reading', done: 3, total: 48 })[0].count === '3 of 48' && progressLines({ stage: 'features', done: 40, total: 48 })[0].state === 'now');
+}
+
+// ---------------------------------------------------------------- 1b. changes by hand (stitchEdit.ts)
+
+if (wanted('math') || wanted('edit')) {
+  console.log('1b. changes by hand on the review screen');
+  // A row of five 1000 x 800 tiles. The automatic pass placed 0, 1, 2 (the mosaic) and found
+  // that 3 and 4 fit each other but nothing else.
+  const W = 1000;
+  const H = 800;
+  const tiles: StitchTile[] = [0, 1, 2, 3, 4].map((k) => ({ id: `e${k}`, width: W, height: H }));
+  const truth: AffineMatrix[] = tiles.map((_, k) => turn(0, 1, k * 850, 0));
+  const overlapOf = (a: number, b: number, inliers = 80): Overlap => {
+    const src: number[] = [];
+    const dst: number[] = [];
+    const toB = multiply(invert(truth[b]), truth[a]);
+    for (let k = 0; k < 12; k++) {
+      const x = 860 + (k % 4) * 40;
+      const y = 100 + Math.floor(k / 4) * 250;
+      src.push(x, y);
+      dst.push(...apply(toB, x, y));
+    }
+    return { a, b, inliers, src, dst, matrix: fitSimilarity(src, dst), rms: 0 };
+  };
+  const automatic = solveLayout(tiles, [overlapOf(0, 1), overlapOf(1, 2), overlapOf(3, 4)]);
+  check('fixture: a mosaic of three and a group of two', automatic.groups.map((g) => g.tiles.length).join() === '3,2', automatic.groups.map((g) => g.tiles));
+  const start = startEdit(automatic);
+  const frame0 = mosaicFrame(automatic, mainGroup(start), 10000)!;
+  const placedAt = (e: StitchEdit, t: number) => mainGroup(e).placements[t];
+  const same = (m1: AffineMatrix | undefined, m2: AffineMatrix | undefined) => !!m1 && !!m2 && far(m1, m2, W, H) < 1e-6;
+
+  check('statuses: all good at the start', Object.values(tileStatuses(start)).every((x) => x === 'good') && Object.keys(tileStatuses(start)).length === 3);
+  check('pieceOf: a tile alone', pieceOf(start, 1).join() === '1');
+
+  // A move on screen becomes a move in the group's frame (here the mosaic is half size)
+  const half = mosaicFrame(automatic, mainGroup(start), 1350)!;
+  const d = deltaInGroup(start, half, [1, 0, 50, 0, 1, -20])!;
+  check('deltaInGroup: 50 px on a half-size mosaic is 100 px of the tiles', Math.abs(d[2] - 50 / half.scale) < 1e-6 && Math.abs(d[5] + 20 / half.scale) < 1e-6 && Math.abs(d[0] - 1) < 1e-9, d);
+
+  // Tile 2 dragged away with no fit: by hand, its overlap gone, the others untouched
+  const delta: AffineMatrix = [1, 0, 300, 0, 1, 120];
+  const dragged = moveInMosaic(start, [2], delta, null);
+  check('by hand: the tile moved by the delta', same(placedAt(dragged, 2), multiply(delta, placedAt(start, 2))));
+  check('by hand: the other tiles stay', same(placedAt(dragged, 0), placedAt(start, 0)) && same(placedAt(dragged, 1), placedAt(start, 1)));
+  check('by hand: marked, and its overlap with the tile that stayed is gone', dragged.byHand.has(2) && dragged.changed.has(2) && !dragged.layout.overlaps.some((o) => o.a === 2 || o.b === 2));
+  check('by hand: status hand', tileStatuses(dragged)[2] === 'hand' && tileStatuses(dragged)[1] === 'good');
+  check('by hand: the start is not changed', !start.byHand.has(2) && start.layout.overlaps.length === 3 && same(placedAt(start, 2), automatic.groups[0].placements[2]));
+  check('by hand: the mosaic grows', mosaicFrame(dragged.layout, mainGroup(dragged), 10000)!.fullWidth > frame0.fullWidth + 250);
+
+  // The same drag, but a snap found the exact fit: not by hand, new overlap kept
+  const snapOverlap = { ...overlapOf(1, 2, 45), hard: true };
+  const snappedEdit = moveInMosaic(dragged, [2], invert(delta), [snapOverlap]);
+  check('snapped: back in place, not by hand, still changed', same(placedAt(snappedEdit, 2), placedAt(start, 2)) && !snappedEdit.byHand.has(2) && snappedEdit.changed.has(2));
+  check('snapped: the overlap the snap found is in the layout', snappedEdit.layout.overlaps.includes(snapOverlap));
+  check('snapped: a single neighbor with 45 points is weak', tileStatuses(snappedEdit)[2] === 'weak');
+
+  // Snap sides: the moved tiles against the rest, without tiles left out
+  const sides = snapSides(leaveOut(start, 0), [2])!;
+  check('snapSides: moved 2, target 1 only (0 is left out)', sides.moved.tiles.join() === '2' && sides.target.tiles.join() === '1');
+  check('snapSides: nothing to snap to', snapSides(leaveOut(leaveOut(start, 0), 1), [2]) === null);
+
+  // Leave out and put back
+  const out = leaveOut(start, 1);
+  check('leave out / put back', out.leftOut.has(1) && !putBack(out, 1).leftOut.has(1) && leaveOut(out, 1) === out && putBack(start, 1) === start);
+  check('a tile that is not in the mosaic cannot be left out', leaveOut(start, 3) === start);
+
+  // The group of two dropped on the mosaic by hand: one piece, upright, its middle on the point
+  const group = otherGroups(start)[0];
+  const point = { x: frame0.width + 400, y: frame0.height / 2 };
+  const rough = dropPlacement(start, frame0, group, point)!;
+  const placed = placeOnMosaic(start, group, rough, null);
+  check('placed by hand: five tiles in the mosaic, no other group', mainGroup(placed).tiles.length === 5 && otherGroups(placed).length === 0);
+  check('placed by hand: the mosaic keeps its anchor and its placements', mainGroup(placed).tiles[0] === mainGroup(start).tiles[0] && [0, 1, 2].every((t) => same(placedAt(placed, t), placedAt(start, t))));
+  check('placed by hand: one piece, both by hand', pieceOf(placed, 3).join() === '3,4' && pieceOf(placed, 4).join() === '3,4' && placed.byHand.has(3) && placed.byHand.has(4));
+  {
+    const f = mosaicFrame(placed.layout, mainGroup(placed), 100000)!;
+    const g0 = groupToMosaic(mainGroup(start), frame0)!;
+    // Middle of the two tiles, in the first frame's pixels
+    const corners = [3, 4].flatMap((t) => [[0, 0], [W, H]].map(([x, y]) => apply(multiply(g0, placedAt(placed, t)), x, y)));
+    const mx = (Math.min(...corners.map((c) => c[0])) + Math.max(...corners.map((c) => c[0]))) / 2;
+    const my = (Math.min(...corners.map((c) => c[1])) + Math.max(...corners.map((c) => c[1]))) / 2;
+    check('placed by hand: its middle is on the drop point', Math.abs(mx - point.x) < 1e-6 && Math.abs(my - point.y) < 1e-6, [mx, my, point]);
+    check('placed by hand: same size as the other tiles, upright', Math.abs(sizeAndTurn(placedAt(placed, 3)).scale - 1) < 1e-9 && Math.abs(sizeAndTurn(f.toMosaic[3]).degrees) < 1e-6);
+    check('placed by hand: the pair keeps its own fit', same(multiply(invert(placedAt(placed, 3)), placedAt(placed, 4)), multiply(invert(truth[3]), truth[4])));
+  }
+  // The piece moves as one; a snap of one of its tiles ends the piece
+  const pieceMoved = moveInMosaic(placed, pieceOf(placed, 4), delta, null);
+  check('piece: both tiles moved, their overlap kept', same(placedAt(pieceMoved, 3), multiply(delta, placedAt(placed, 3))) && same(placedAt(pieceMoved, 4), multiply(delta, placedAt(placed, 4)))
+    && pieceMoved.layout.overlaps.some((o) => o.a === 3 && o.b === 4));
+  const pieceSnapped = moveInMosaic(placed, [3, 4], delta, [{ ...overlapOf(2, 3), hard: true }]);
+  check('piece: snapped, no longer a piece or by hand', pieceOf(pieceSnapped, 3).join() === '3' && !pieceSnapped.byHand.has(3) && !pieceSnapped.byHand.has(4));
+  // Dropped with a fit found
+  const fitted = placeOnMosaic(start, group, rough, [{ ...overlapOf(2, 3), hard: true }]);
+  check('placed with a fit: no piece, not by hand, changed', pieceOf(fitted, 3).join() === '3' && !fitted.byHand.has(3) && fitted.changed.has(3) && fitted.changed.has(4));
+  check('placing the mosaic on itself changes nothing', placeOnMosaic(start, mainGroup(start), rough, null) === start);
+
+  // Separate: the group of two becomes two single images
+  const apart = separateGroup(start, group);
+  check('separate: two single images, their overlap gone', otherGroups(apart).map((g) => g.tiles.join()).join('|') === '3|4' && !apart.layout.overlaps.some((o) => o.a === 3));
+  check('separate: the mosaic cannot be separated', separateGroup(start, mainGroup(start)) === start);
+
+  // Reset one tile: an automatic tile goes back with its overlap; a tile placed by hand leaves the mosaic
+  const back = resetTile(dragged, automatic, 2);
+  check('reset: back in its automatic place with its overlap', same(placedAt(back, 2), automatic.groups[0].placements[2]) && !back.byHand.has(2) && !back.changed.has(2)
+    && back.layout.overlaps.some((o) => o.a === 1 && o.b === 2));
+  check('reset: a tile nobody moved stays as it is', resetTile(dragged, automatic, 1) === dragged);
+  const both = moveInMosaic(dragged, [1], delta, null);
+  const oneBack = resetTile(both, automatic, 2);
+  check('reset: no overlap comes back to a neighbor that is itself moved', !oneBack.layout.overlaps.some((o) => o.a === 2 || o.b === 2));
+  const taken = resetTile(placed, automatic, 4);
+  check('reset: a tile the automatic pass did not place leaves the mosaic alone', mainGroup(taken).tiles.join() === mainGroup(placed).tiles.filter((t) => t !== 4).join()
+    && otherGroups(taken).map((g) => g.tiles.join()).join('|') === '4' && pieceOf(taken, 3).join() === '3' && !taken.byHand.has(4) && taken.byHand.has(3));
+  check('reset: the mosaic stays first even when it is the smaller group', mainGroup(taken).tiles.includes(0));
+
+  // Undo and redo; nudges of one tile are one step
+  let h: EditHistory = startHistory(start);
+  h = change(h, dragged);
+  h = change(h, snappedEdit);
+  check('history: two steps back, one forward', undo(undo(h)).now === start && redo(undo(h)).now === snappedEdit && undo(h).now === dragged);
+  check('history: nothing to undo or redo', undo(startHistory(start)).now === start && redo(h) === h);
+  check('history: a new change after undo drops the redo', change(undo(h), out).future.length === 0 && undo(change(undo(h), out)).now === dragged);
+  check('history: the same edit is no step', change(h, snappedEdit) === h);
+  let n: EditHistory = startHistory(start);
+  for (let k = 1; k <= 5; k++) n = change(n, moveInMosaic(n.now, [2], [1, 0, 1, 0, 1, 0], null), 'nudge 2');
+  check('history: five nudges of one tile are one step', n.past.length === 1 && undo(n).now === start && Math.abs(placedAt(n.now, 2)[2] - placedAt(start, 2)[2] - 5) < 1e-9);
+  n = change(n, moveInMosaic(n.now, [1], [1, 0, 1, 0, 1, 0], null), 'nudge 1');
+  check('history: a nudge of another tile is its own step', n.past.length === 2);
 }
 
 // ---------------------------------------------------------------- 2. tiles with a known truth
