@@ -32,6 +32,8 @@ import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
 import { ImageComparatorDialog } from './components/dialogs/ImageComparatorDialog';
 import { ImageStitcherDialog } from './components/dialogs/ImageStitcherDialog';
+import { NewMicrographDialog } from './components/dialogs/NewMicrographDialog';
+import type { MosaicTarget, StitchedMosaic } from './services/stitch/stitchApp';
 import { CustomUserDataDialog } from './components/dialogs/CustomUserDataDialog';
 import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisDialog';
 import { StraboToolsDialog } from './components/dialogs/StraboToolsDialog';
@@ -228,6 +230,8 @@ function App() {
   const [isGrainDetectionDialogOpen, setIsGrainDetectionDialogOpen] = useState(false);
   const [isImageComparatorDialogOpen, setIsImageComparatorDialogOpen] = useState(false);
   const [isImageStitcherOpen, setIsImageStitcherOpen] = useState(false);
+  // A mosaic from Tools > Image Stitcher... on its way into the project: New Micrograph opens with it
+  const [stitchedForProject, setStitchedForProject] = useState<{ mosaic: StitchedMosaic; target: MosaicTarget } | null>(null);
   const [isCustomUserDataDialogOpen, setIsCustomUserDataDialogOpen] = useState(false);
   const [isGrainSizeAnalysisDialogOpen, setIsGrainSizeAnalysisDialogOpen] = useState(false);
   const [isStraboToolsDialogOpen, setIsStraboToolsDialogOpen] = useState(false);
@@ -1995,7 +1999,20 @@ function App() {
         onClose={() => setIsGrainDetectionDialogOpen(false)}
         micrographId={activeMicrographId}
       />
-      <ImageStitcherDialog open={isImageStitcherOpen} onClose={() => setIsImageStitcherOpen(false)} />
+      <ImageStitcherDialog
+        open={isImageStitcherOpen}
+        onClose={() => setIsImageStitcherOpen(false)}
+        onAddToProject={(mosaic, target) => setStitchedForProject({ mosaic, target })}
+      />
+      {stitchedForProject && (
+        <NewMicrographDialog
+          isOpen
+          onClose={() => setStitchedForProject(null)}
+          sampleId={stitchedForProject.target.sampleId}
+          parentMicrographId={stitchedForProject.target.parentMicrographId}
+          initialMosaic={stitchedForProject.mosaic}
+        />
+      )}
       <ImageComparatorDialog
         open={isImageComparatorDialogOpen}
         onClose={() => setIsImageComparatorDialogOpen(false)}

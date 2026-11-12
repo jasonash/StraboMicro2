@@ -1463,6 +1463,14 @@ interface Window {
       chooseFolder: () => Promise<{ canceled: boolean; folder?: string; paths: string[] }>;
       /** Save dialog, then the built mosaic as JPEG, PNG or TIFF by the name chosen */
       saveWithDialog: (session: string, defaultName: string) => Promise<{ success: boolean; canceled?: boolean; error?: string; path?: string }>;
+      /**
+       * The built mosaic leaves the session as a lossless "<name>.tif" for the import to take.
+       * importFactor: imported width / mosaic width (the import enlarges narrow images).
+       */
+      handOver: (session: string, name: string) => Promise<{ success: boolean; error?: string; path?: string; fileName?: string; width?: number; height?: number; importFactor?: number }>;
+      /** Save dialog for a handed-over mosaic */
+      saveHandedWithDialog: (filePath: string, defaultName: string) => Promise<{ success: boolean; canceled?: boolean; error?: string; path?: string }>;
+      discardHanded: (filePath: string) => Promise<void>;
       cleanup: (session: string) => Promise<void>;
     };
 

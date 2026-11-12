@@ -12,6 +12,7 @@ import sharp from 'sharp';
 import { test, expect } from '../lib/test';
 import { ACCOUNTS } from '../lib/copy';
 import { accuracy, cutTiles, makeScene } from '../../stitchFixtures.mts';
+import { writeTiles } from '../lib/stitchTiles';
 
 test('stitch engine in the app: preview copies, workers, mosaic file', async ({ launch, runDir }) => {
   test.setTimeout(5 * 60_000);
@@ -106,17 +107,6 @@ test('stitch engine in the app: preview copies, workers, mosaic file', async ({ 
   expect(notFound).toEqual([]);
   expect(ana.consoleErrors.filter((l) => /stitch|worker|opencv/i.test(l))).toEqual([]);
 });
-
-async function writeTiles(dir: string, tiles: Array<{ id: string; image: { data: Uint8Array; width: number; height: number } }>): Promise<string[]> {
-  fs.mkdirSync(dir, { recursive: true });
-  const paths: string[] = [];
-  for (const t of tiles) {
-    const p = path.join(dir, `${t.id}.jpg`);
-    await sharp(Buffer.from(t.image.data.buffer, t.image.data.byteOffset, t.image.data.length), { raw: { width: t.image.width, height: t.image.height, channels: 1 } }).jpeg({ quality: 92 }).toFile(p);
-    paths.push(p);
-  }
-  return paths;
-}
 
 /**
  * The wizard (Tools > Image Stitcher...), first version: choose images (files and a folder),

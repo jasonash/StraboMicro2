@@ -939,6 +939,9 @@ contextBridge.exposeInMainWorld('api', {
     preview: (session, index, maxSide) => ipcRenderer.invoke('stitch:preview', session, index, maxSide),
     chooseFolder: () => ipcRenderer.invoke('stitch:choose-folder'),
     saveWithDialog: (session, defaultName) => ipcRenderer.invoke('stitch:save-dialog', session, defaultName),
+    handOver: (session, name) => ipcRenderer.invoke('stitch:hand-over', session, name),
+    saveHandedWithDialog: (filePath, defaultName) => ipcRenderer.invoke('stitch:save-handed-dialog', filePath, defaultName),
+    discardHanded: (filePath) => ipcRenderer.invoke('stitch:discard-handed', filePath),
     cleanup: (session) => ipcRenderer.invoke('stitch:cleanup', session),
   },
 });

@@ -154,6 +154,18 @@ function calculateUpscaledDimensions(width, height) {
 }
 
 /**
+ * The size an image of this size has after import: shrunk to MAX_IMAGE_DIMENSION on the long
+ * side, or enlarged to MIN_IMAGE_WIDTH wide (the rule convertToScratchJPEG applies).
+ * @returns {{width: number, height: number}}
+ */
+function importedDimensions(width, height) {
+  const down = calculateDownscaledDimensions(width, height);
+  if (down.downscaled) return { width: down.width, height: down.height };
+  const up = calculateUpscaledDimensions(width, height);
+  return { width: up.width, height: up.height };
+}
+
+/**
  * Convert TIFF (or other format) to JPEG in scratch space
  * This should be called IMMEDIATELY when user selects an image
  * Returns the scratch path where the JPEG is stored temporarily
@@ -754,4 +766,5 @@ module.exports = {
   isValidImage,
   validateImageFile,
   resizeScratchImage,
+  importedDimensions,
 };

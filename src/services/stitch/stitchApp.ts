@@ -177,6 +177,37 @@ export async function buildGroup(
   }
 }
 
+/** A built mosaic on its way into the project: a lossless file the import takes like any chosen image */
+export interface StitchedMosaic {
+  /** The file ("<name>.tif" in the scratch folder) */
+  path: string;
+  fileName: string;
+  /** Default micrograph name ("TS-12 mosaic") */
+  name: string;
+  /** Scale of the mosaic as imported, when the scale of the original images was given */
+  scale?: { pixelsPerUnit: number; unit: string };
+}
+
+/**
+ * Takes the built mosaic out of the session for New Micrograph or the New Project wizard.
+ * mosaicScale: pixels per unit of the built mosaic; converted here for the size the import
+ * makes of it. After this the session has no mosaic any more.
+ */
+export async function handOverMosaic(session: string, name: string, mosaicScale?: { pixelsPerUnit: number; unit: string } | null): Promise<StitchedMosaic> {
+  const r = await api().stitch.handOver(session, name);
+  if (!r.success || !r.path || !r.fileName) throw new Error(r.error ?? 'The mosaic could not be handed over');
+  const factor = r.importFactor ?? 1;
+  return {
+    path: r.path,
+    fileName: r.fileName,
+    name,
+    ...(mosaicScale ? { scale: { pixelsPerUnit: mosaicScale.pixelsPerUnit * factor, unit: mosaicScale.unit } } : {}),
+  };
+}
+
+/** Where a mosaic goes in the project: a new reference micrograph of a sample, or an associated micrograph on a parent */
+export type MosaicTarget = { sampleId: string; parentMicrographId: null } | { sampleId: null; parentMicrographId: string };
+
 /** Long side of the copies the review canvas draws, by how many images there are (memory on screen stays bounded) */
 export function canvasPreviewSide(count: number): number {
   if (count <= 12) return 1024;

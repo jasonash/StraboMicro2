@@ -9,6 +9,10 @@
  * - preview: a prepared image's copy as JPEG bytes, for the review canvas; choose-folder: every
  *   supported image in a folder; save-dialog: Save As for the built mosaic.
  * - machine: processors and memory, for the number of workers.
+ * - hand-over: the built mosaic leaves the session as a lossless file with a name
+ *   (<scratch>/mosaics/<session>/<name>.tif), for New Micrograph or the New Project wizard to
+ *   import like any chosen image (so it is compressed once, by the import). It outlives the
+ *   session; discard-handed removes it, the scratch wipe at startup removes what is left.
  * - cleanup: removes the session's scratch folder.
  *
  * A session is one run of the stitcher wizard; its files live in <scratch>/stitch-<session>/.
@@ -109,8 +113,8 @@ async function chooseFolder(window) {
 
 const FORMAT_OF = { '.jpg': 'jpeg', '.jpeg': 'jpeg', '.png': 'png', '.tif': 'tiff', '.tiff': 'tiff' };
 
-/** Save dialog, then the built mosaic in the format the chosen name ends in (JPEG if none) */
-async function saveWithDialog(window, session, defaultName) {
+/** Save As for a mosaic; the format is the one the chosen name ends in (JPEG if none) */
+async function askWhereToSave(window, defaultName) {
   const result = await dialog.showSaveDialog(window, {
     title: 'Save Mosaic',
     defaultPath: `${defaultName}.jpg`,
@@ -120,14 +124,78 @@ async function saveWithDialog(window, session, defaultName) {
       { name: 'TIFF Image', extensions: ['tif', 'tiff'] },
     ],
   });
-  if (result.canceled || !result.filePath) return { success: false, canceled: true };
+  if (result.canceled || !result.filePath) return null;
   let outputPath = result.filePath;
   let format = FORMAT_OF[path.extname(outputPath).toLowerCase()];
   if (!format) {
     outputPath += '.jpg';
     format = 'jpeg';
   }
-  return saveAs(session, outputPath, format);
+  return { outputPath, format };
+}
+
+/** Save dialog, then the session's built mosaic in the chosen format */
+async function saveWithDialog(window, session, defaultName) {
+  const chosen = await askWhereToSave(window, defaultName);
+  if (!chosen) return { success: false, canceled: true };
+  return saveAs(session, chosen.outputPath, chosen.format);
+}
+
+/** Where handed-over mosaics live */
+function handedDir() {
+  return path.join(scratchSpace.scratchDir, 'mosaics');
+}
+
+/** A path the renderer names as a handed-over mosaic: must be a file of ours */
+function handedPath(filePath) {
+  if (typeof filePath !== 'string') throw new Error('Bad mosaic path');
+  const resolved = path.resolve(filePath);
+  const inside = path.relative(handedDir(), resolved);
+  if (!inside || inside.startsWith('..') || path.isAbsolute(inside) || path.extname(resolved).toLowerCase() !== '.tif') throw new Error('Bad mosaic path');
+  return resolved;
+}
+
+/** A file name from a mosaic name: nothing a file system refuses */
+function safeFileName(name) {
+  const cleaned = String(name ?? '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').replace(/^[. ]+|[. ]+$/g, '').slice(0, 120);
+  return cleaned || 'Mosaic';
+}
+
+/**
+ * The built mosaic leaves the session as "<name>.tif". Also answers what the import will make
+ * of it: importFactor is imported width / mosaic width (1 unless the mosaic is narrower than
+ * the import's smallest width).
+ */
+async function handOver(session, name) {
+  const source = path.join(sessionDir(session), 'mosaic.tif');
+  try {
+    const meta = await sharp(source, { limitInputPixels: false }).metadata();
+    const dir = path.join(handedDir(), session);
+    await fs.promises.rm(dir, { recursive: true, force: true });
+    await fs.promises.mkdir(dir, { recursive: true });
+    const fileName = `${safeFileName(name)}.tif`;
+    const target = path.join(dir, fileName);
+    await fs.promises.rename(source, target);
+    const imported = imageConverter.importedDimensions(meta.width, meta.height);
+    return { success: true, path: target, fileName, width: meta.width, height: meta.height, importFactor: imported.width / meta.width };
+  } catch (error) {
+    log.error('[Stitch] Hand-over failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Save dialog for a handed-over mosaic (when the dialog that received it is cancelled) */
+async function saveHandedWithDialog(window, filePath, defaultName) {
+  const source = handedPath(filePath);
+  const chosen = await askWhereToSave(window, defaultName);
+  if (!chosen) return { success: false, canceled: true };
+  return saveFile(source, chosen.outputPath, chosen.format);
+}
+
+/** Removes a handed-over mosaic (and its folder) */
+async function discardHanded(filePath) {
+  const file = handedPath(filePath);
+  await fs.promises.rm(path.dirname(file) === handedDir() ? file : path.dirname(file), { recursive: true, force: true });
 }
 
 /** session -> { cancelled } of the build in progress */
@@ -167,8 +235,11 @@ function cancelBuild(session) {
   if (state) state.cancelled = true;
 }
 
-async function saveAs(session, outputPath, format) {
-  const source = path.join(sessionDir(session), 'mosaic.tif');
+function saveAs(session, outputPath, format) {
+  return saveFile(path.join(sessionDir(session), 'mosaic.tif'), outputPath, format);
+}
+
+async function saveFile(source, outputPath, format) {
   try {
     if (format === 'tiff-plain') await fs.promises.copyFile(source, outputPath);
     else await saveMosaicAs(source, outputPath, format);
@@ -201,7 +272,10 @@ function registerIpc(ipcMain) {
   ipcMain.handle('stitch:preview', (event, session, index, maxSide) => preview(session, index, maxSide));
   ipcMain.handle('stitch:choose-folder', (event) => chooseFolder(BrowserWindow.fromWebContents(event.sender)));
   ipcMain.handle('stitch:save-dialog', (event, session, defaultName) => saveWithDialog(BrowserWindow.fromWebContents(event.sender), session, defaultName));
+  ipcMain.handle('stitch:hand-over', (event, session, name) => handOver(session, name));
+  ipcMain.handle('stitch:save-handed-dialog', (event, filePath, defaultName) => saveHandedWithDialog(BrowserWindow.fromWebContents(event.sender), filePath, defaultName));
+  ipcMain.handle('stitch:discard-handed', (event, filePath) => discardHanded(filePath));
   ipcMain.handle('stitch:cleanup', (event, session) => cleanup(session));
 }
 
-module.exports = { registerIpc, prepare, preview, imagesInFolder, build, cancelBuild, saveAs, cleanup, machine, PREVIEW_SIDE };
+module.exports = { registerIpc, prepare, preview, imagesInFolder, build, cancelBuild, saveAs, handOver, discardHanded, cleanup, machine, PREVIEW_SIDE };

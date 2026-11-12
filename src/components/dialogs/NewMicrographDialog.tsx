@@ -69,6 +69,9 @@ import {
 } from '@/utils/copySizePlacement';
 import { findMicrographById } from '@/store/helpers';
 import { describeImageLoadError } from '@/utils/imageLoadError';
+import type { StitchedMosaic } from '@/services/stitch/stitchApp';
+import { ImageStitcherDialog } from './ImageStitcherDialog';
+import { DiscardMosaicDialog } from './DiscardMosaicDialog';
 import {
   isQuarterTurn,
   IDENTITY_ORIENTATION,
@@ -87,6 +90,8 @@ interface NewMicrographDialogProps {
   onClose: () => void;
   sampleId: string | null; // For reference micrographs
   parentMicrographId: string | null; // For associated micrographs
+  /** A mosaic from Tools > Image Stitcher...: loaded as the image when the dialog opens */
+  initialMosaic?: StitchedMosaic | null;
 }
 
 interface MicrographFormData {
@@ -392,6 +397,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   onClose,
   sampleId,
   parentMicrographId,
+  initialMosaic = null,
 }) => {
   const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState<MicrographFormData>(initialFormData);
@@ -712,11 +718,36 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     percent: number;
   } | null>(null);
 
+  // A mosaic from the Image Stitcher that is this dialog's image (a lossless file in the scratch
+  // folder). Kept until the dialog finishes or is cancelled, so cancelling can still save it.
+  const [mosaic, setMosaic] = useState<StitchedMosaic | null>(null);
+  const [showStitcher, setShowStitcher] = useState(false);
+  const [confirmDiscardMosaic, setConfirmDiscardMosaic] = useState(false);
+
+  const discardMosaicFile = (which: StitchedMosaic | null) => {
+    if (!which) return;
+    window.api?.stitch
+      .discardHanded(which.path)
+      .catch((err) => console.error('[NewMicrographDialog] Error removing the mosaic file:', err));
+  };
+
   const handleBrowseImage = async () => {
     if (window.api && window.api.openTiffDialog) {
       try {
         const filePath = await window.api.openTiffDialog();
-        if (filePath) {
+        if (filePath) await loadChosenImage(filePath, null);
+      } catch (error) {
+        console.error('Error selecting image:', error);
+      }
+    }
+  };
+
+  // Takes an image file as this micrograph's image: a file the user browsed to, or a mosaic
+  // from the Image Stitcher (fromStitcher; its name and scale come with it).
+  const loadChosenImage = async (filePath: string, fromStitcher: StitchedMosaic | null) => {
+    if (window.api) {
+      try {
+        {
           // Validate the file is readable and has a recognized image format
           const [validation] = await window.api.validateImageFiles([filePath]);
           if (!validation?.valid) {
@@ -729,6 +760,10 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.')) || fileName;
 
           console.log('[NewMicrographDialog] Selected file:', filePath);
+
+          // The image chosen before is replaced
+          const previousScratch = scratchIdentifier;
+          const previousMosaic = mosaic;
 
           // Convert to JPEG in scratch space IMMEDIATELY
           setIsLoadingPreview(true);
@@ -750,6 +785,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
 
             // Store scratch identifier for later cleanup or move
             setScratchIdentifier(conversionResult.identifier);
+            if (previousScratch && previousScratch !== conversionResult.identifier) {
+              window.api
+                .deleteScratchImage(previousScratch)
+                .catch((err) => console.error('[NewMicrographDialog] Error cleaning up the replaced scratch image:', err));
+            }
+            if (previousMosaic && previousMosaic.path !== fromStitcher?.path) discardMosaicFile(previousMosaic);
+            setMosaic(fromStitcher);
 
             // Now load the JPEG from scratch space (much smaller, much faster)
             console.log('[NewMicrographDialog] Loading tiles from scratch JPEG...');
@@ -768,9 +810,20 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               ...prev,
               micrographFilePath: conversionResult.scratchPath, // Use scratch path now
               micrographFileName: fileName,
-              micrographName: prev.micrographName || nameWithoutExt,
+              micrographName: prev.micrographName || fromStitcher?.name || nameWithoutExt,
               micrographWidth: conversionResult.jpegWidth,
               micrographHeight: conversionResult.jpegHeight,
+              // The scale given in the stitcher arrives filled in (Pixel Conversion Factor).
+              // An associated micrograph chooses its scale method after its location method,
+              // so only the numbers are filled in there.
+              ...(fromStitcher?.scale
+                ? {
+                    ...(isAssociated ? {} : { scaleMethod: 'Pixel Conversion Factor' as const }),
+                    pixels: String(Number(fromStitcher.scale.pixelsPerUnit.toPrecision(6))),
+                    physicalLength: '1',
+                    pixelUnits: fromStitcher.scale.unit,
+                  }
+                : {}),
             }));
 
             // Clear any previously selected XPL image (dimensions may no longer match)
@@ -792,6 +845,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             console.error('[NewMicrographDialog] Failed to convert/load image:', error);
             alert(`Error loading image: ${describeImageLoadError(error)}`);
             setConversionProgress(null);
+            // A mosaic that could not be loaded is not this dialog's image: its file goes
+            if (fromStitcher) discardMosaicFile(fromStitcher);
           } finally {
             setIsLoadingPreview(false);
           }
@@ -801,6 +856,15 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       }
     }
   };
+
+  // Opened with a mosaic (Tools > Image Stitcher..., "Add to the project"): it is the image
+  const loadedInitialMosaic = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen || !initialMosaic || loadedInitialMosaic.current === initialMosaic.path) return;
+    loadedInitialMosaic.current = initialMosaic.path;
+    void loadChosenImage(initialMosaic.path, initialMosaic);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialMosaic]);
 
   // Handle adding a corresponding cross-polarized (XPL) image
   const handleAddXplImage = async () => {
@@ -1021,6 +1085,13 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       }
     }
 
+    // The mosaic's lossless file is no longer needed (the micrograph has its image, or the
+    // user discarded it)
+    discardMosaicFile(mosaic);
+    setMosaic(null);
+    setConfirmDiscardMosaic(false);
+    setShowStitcher(false);
+
     setFormData(initialFormData);
     setActiveStep(0);
     setDetectors([]);
@@ -1037,6 +1108,15 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     setXplHeight(null);
     setXplScratchIdentifier(null);
     onClose();
+  };
+
+  // Cancel by the user: a mosaic took minutes to make, so ask before it is lost
+  const requestCancel = () => {
+    if (mosaic && !isFinishingRef.current) {
+      setConfirmDiscardMosaic(true);
+      return;
+    }
+    void handleCancel();
   };
 
   const runFinish = async () => {
@@ -2604,6 +2684,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           }}>
             Enter the number of pixels that corresponds to a known physical length.
           </Typography>
+          {mosaic?.scale && (
+            <Alert severity="info">
+              Filled in from the Image Stitcher: the scale of the original images, converted for the size of the mosaic.
+            </Alert>
+          )}
           <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField
               fullWidth
@@ -3413,6 +3498,21 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
                 disabled={isLoadingPreview}
               >
                 Browse...
+              </Button>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary', flex: 1 }}>
+                {mosaic
+                  ? 'This image is a mosaic made in the Image Stitcher.'
+                  : 'Several overlapping images of one area? Stitch them into one mosaic first.'}
+              </Typography>
+              <Button
+                variant="outlined"
+                onClick={() => setShowStitcher(true)}
+                sx={{ minWidth: '120px', whiteSpace: 'nowrap' }}
+                disabled={isLoadingPreview}
+              >
+                Stitch Images...
               </Button>
             </Box>
           </Stack>
@@ -5482,7 +5582,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         open={isOpen}
         onClose={(_event, reason) => {
           if (reason !== 'backdropClick' && reason !== 'escapeKeyDown') {
-            handleCancel();
+            requestCancel();
           }
         }}
         maxWidth="md"
@@ -5542,7 +5642,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           <Box sx={{ mt: 2, mb: 1 }}>{renderStepContent()}</Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCancel} disabled={isRotating}>Cancel</Button>
+          <Button onClick={requestCancel} disabled={isRotating}>Cancel</Button>
           {activeStep > 0 && (
             <Button onClick={handleBack} disabled={isRotating}>
               Back
@@ -5643,6 +5743,24 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
           </Typography>
         </Box>
       )}
+
+      {/* "Stitch Images...": the Image Stitcher makes this micrograph's image */}
+      <ImageStitcherDialog
+        open={isOpen && showStitcher}
+        purpose="pick"
+        onClose={() => setShowStitcher(false)}
+        onUse={(stitched) => {
+          void loadChosenImage(stitched.path, stitched);
+        }}
+      />
+
+      {/* Cancel with a mosaic as the image */}
+      <DiscardMosaicDialog
+        open={isOpen && confirmDiscardMosaic}
+        mosaic={mosaic}
+        onKeepWorking={() => setConfirmDiscardMosaic(false)}
+        onLeave={() => void handleCancel()}
+      />
     </>
   );
 };

@@ -4,8 +4,12 @@
  * Steps: choose the images; "Fitting the images together" (automatic, in workers); review the
  * result on a canvas with the list of images beside it; build the mosaic; save it as an image file.
  *
- * This first version reviews as a viewer: images can be left out or put back, not yet moved by
- * hand, and the mosaic is saved as a file (adding it to the project comes next).
+ * The built mosaic goes into the project or to a file. From Tools > Image Stitcher... the last
+ * step offers a new reference micrograph, an associated micrograph (both continue in New
+ * Micrograph) or an image file. Opened by "Stitch Images..." in New Micrograph or the New Project
+ * wizard (purpose "pick"), the last step hands the mosaic back to that dialog.
+ *
+ * So far the review is a viewer: images can be left out or put back, not yet moved by hand.
  *
  * Design: docs/image-stitcher-design.md
  */
@@ -28,6 +32,8 @@ import {
   ListItemButton,
   ListSubheader,
   MenuItem,
+  Radio,
+  RadioGroup,
   Stack,
   TextField,
   ToggleButton,
@@ -45,13 +51,26 @@ import {
 import { coveredRectangle, hasEmptyAreas, type StitchLayout } from '@/services/stitch/stitchLayout';
 import { ESTIMATE_FROM, MAX_IMAGES, estimateSeconds } from '@/services/stitch/stitch';
 import { workerCount, type StitchRun } from '@/services/stitch/stitchPool';
-import { buildGroup, fitImagesTogether, frameOf, newSession, prepareImages, type PreparedImage } from '@/services/stitch/stitchApp';
+import {
+  buildGroup, fitImagesTogether, frameOf, handOverMosaic, newSession, prepareImages,
+  type MosaicTarget, type PreparedImage, type StitchedMosaic,
+} from '@/services/stitch/stitchApp';
+import { useAppStore } from '@/store';
+import { useCanCreate } from '@/hooks/usePermissions';
 import { StitchReviewCanvas } from './StitchReviewCanvas';
 
 interface ImageStitcherDialogProps {
   open: boolean;
   onClose: () => void;
+  /** "pick": opened by a dialog that wants an image; the last step hands the mosaic to onUse */
+  purpose?: 'tools' | 'pick';
+  /** The mosaic for the dialog that asked (purpose "pick"); the stitcher closes itself after */
+  onUse?: (mosaic: StitchedMosaic) => void;
+  /** Tools route: the mosaic and where the user wants it; the stitcher closes itself after */
+  onAddToProject?: (mosaic: StitchedMosaic, target: MosaicTarget) => void;
 }
+
+type Destination = 'reference' | 'associated' | 'file';
 
 type Step = 'choose' | 'fitting' | 'review' | 'building' | 'done';
 
@@ -75,7 +94,7 @@ const UNITS = ['μm', 'mm', 'cm', 'm', 'inches'];
 
 const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
-export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, onClose }) => {
+export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, onClose, purpose = 'tools', onUse, onAddToProject }) => {
   const [step, setStep] = useState<Step>('choose');
   const [session, setSession] = useState('');
   const [rows, setRows] = useState<ChosenRow[]>([]);
@@ -96,6 +115,21 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
   const [savedTo, setSavedTo] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [destination, setDestination] = useState<Destination>('file');
+  const [sampleChoice, setSampleChoice] = useState('');
+  const [parentChoice, setParentChoice] = useState('');
+  /** The mosaic is on its way to New Micrograph / the dialog that asked */
+  const [handing, setHanding] = useState(false);
+
+  // Where the mosaic can go in the open project (Tools route)
+  const project = useAppStore((state) => state.project);
+  const mayCreate = useCanCreate();
+  const samples = useMemo(() => (project?.datasets ?? []).flatMap((dataset) =>
+    (dataset.samples ?? []).map((sample) => ({ id: sample.id, label: `${dataset.name} / ${sample.label || sample.name}` }))), [project]);
+  const micrographs = useMemo(() => (project?.datasets ?? []).flatMap((dataset) =>
+    (dataset.samples ?? []).flatMap((sample) =>
+      (sample.micrographs ?? []).map((micrograph) => ({ id: micrograph.id, label: `${sample.label || sample.name} / ${micrograph.name}` })))), [project]);
+  const offersProject = purpose === 'tools' && !!onAddToProject && !!project && mayCreate;
 
   const run = useRef<StitchRun | null>(null);
   const nextIndex = useRef(0);
@@ -129,6 +163,7 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
     setBuilt(null);
     setSavedTo(null);
     setConfirmDiscard(false);
+    setHanding(false);
     nextIndex.current = 0;
     reading.current = Promise.resolve();
     window.api?.stitch.machine().then(
@@ -301,6 +336,13 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
     if (result.success && result.width && result.height) {
       setBuilt({ width: result.width, height: result.height, scale: frame.scale });
       setSavedTo(null);
+      // Where it goes by default: the sample or micrograph the user is working in
+      const state = useAppStore.getState();
+      const sample = samples.find((x) => x.id === state.activeSampleId) ?? samples[0];
+      const parent = micrographs.find((x) => x.id === state.activeMicrographId) ?? micrographs[0];
+      setSampleChoice(sample?.id ?? '');
+      setParentChoice(parent?.id ?? '');
+      setDestination(!offersProject ? 'file' : sample ? 'reference' : parent ? 'associated' : 'file');
       setStep('done');
     } else {
       if (!result.cancelled) setProblem(`The mosaic could not be built: ${result.error ?? 'unknown error'}`);
@@ -325,13 +367,43 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
   const scaleNumber = Number(scaleValue);
   const mosaicScale = built && scaleValue.trim() !== '' && Number.isFinite(scaleNumber) && scaleNumber > 0 ? scaleNumber * built.scale : null;
 
+  /** The mosaic leaves the stitcher: to the dialog that asked, or to New Micrograph for the chosen place */
+  const handleHandOver = async () => {
+    const target: MosaicTarget | null = purpose === 'pick' ? null
+      : destination === 'reference' && sampleChoice ? { sampleId: sampleChoice, parentMicrographId: null }
+      : destination === 'associated' && parentChoice ? { sampleId: null, parentMicrographId: parentChoice }
+      : null;
+    if (purpose !== 'pick' && !target) return;
+    const mine = life.current;
+    setHanding(true);
+    setProblem(null);
+    try {
+      const mosaic = await handOverMosaic(
+        session,
+        mosaicName(included.map((t) => fitted[t].path)),
+        mosaicScale !== null ? { pixelsPerUnit: mosaicScale, unit: scaleUnit } : null,
+      );
+      if (life.current !== mine) {
+        void window.api?.stitch.discardHanded(mosaic.path);
+        return;
+      }
+      if (target) onAddToProject?.(mosaic, target);
+      else onUse?.(mosaic);
+      onClose();
+    } catch (error) {
+      if (life.current !== mine) return;
+      setProblem(`The mosaic could not be added: ${error instanceof Error ? error.message : String(error)}`);
+      setHanding(false);
+    }
+  };
+
   // ---------------------------------------------------------------- closing
 
-  const busy = step === 'fitting' || step === 'building' || saving;
+  const busy = step === 'fitting' || step === 'building' || saving || handing;
   const requestClose = () => {
     if (busy) return;
     // A fitted layout (and later, placements made by hand) is work worth a question
-    if ((step === 'review' || (step === 'done' && !savedTo)) && !confirmDiscard) {
+    if ((step === 'review' || (step === 'done' && (!savedTo || purpose === 'pick'))) && !confirmDiscard) {
       setConfirmDiscard(true);
       return;
     }
@@ -570,6 +642,23 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
                   Scale of the mosaic: {Number(mosaicScale.toPrecision(6)).toLocaleString('en-US')} pixels per {scaleUnit}.
                 </Typography>
               )}
+              {offersProject && (
+                <RadioGroup value={destination} onChange={(event) => setDestination(event.target.value as Destination)}>
+                  <FormControlLabel value="reference" control={<Radio size="small" />} disabled={samples.length === 0 || handing} label="Add to the project as a new reference micrograph" />
+                  {destination === 'reference' && (
+                    <TextField select size="small" label="Sample" value={sampleChoice} onChange={(event) => setSampleChoice(event.target.value)} disabled={handing} sx={{ ml: 3.5, mb: 1, maxWidth: 480 }}>
+                      {samples.map((sample) => <MenuItem key={sample.id} value={sample.id}>{sample.label}</MenuItem>)}
+                    </TextField>
+                  )}
+                  <FormControlLabel value="associated" control={<Radio size="small" />} disabled={micrographs.length === 0 || handing} label="Add to the project as an associated micrograph" />
+                  {destination === 'associated' && (
+                    <TextField select size="small" label="Parent micrograph" value={parentChoice} onChange={(event) => setParentChoice(event.target.value)} disabled={handing} sx={{ ml: 3.5, mb: 1, maxWidth: 480 }}>
+                      {micrographs.map((micrograph) => <MenuItem key={micrograph.id} value={micrograph.id}>{micrograph.label}</MenuItem>)}
+                    </TextField>
+                  )}
+                  <FormControlLabel value="file" control={<Radio size="small" />} disabled={handing} label="Save as an image file" />
+                </RadioGroup>
+              )}
               {savedTo && <Alert severity="success">Saved to {savedTo}</Alert>}
               {problem && <Alert severity="error">{problem}</Alert>}
             </Stack>
@@ -600,10 +689,19 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
           {step === 'building' && <Button onClick={() => void window.api?.stitch.cancelBuild(session)}>Cancel</Button>}
           {step === 'done' && (
             <>
-              <Button onClick={() => setStep('review')} disabled={saving}>Back</Button>
+              <Button onClick={() => setStep('review')} disabled={saving || handing}>Back</Button>
               <Box sx={{ flex: 1 }} />
-              <Button onClick={requestClose} disabled={saving}>Close</Button>
-              <Button variant="contained" onClick={handleSave} disabled={saving}>Save as an Image File...</Button>
+              <Button onClick={requestClose} disabled={saving || handing}>{purpose === 'pick' || (offersProject && !savedTo) ? 'Cancel' : 'Close'}</Button>
+              {purpose === 'pick' ? (
+                <>
+                  <Button onClick={handleSave} disabled={saving || handing}>Save as an Image File...</Button>
+                  <Button variant="contained" onClick={handleHandOver} disabled={saving || handing}>Use This Mosaic</Button>
+                </>
+              ) : offersProject && destination !== 'file' ? (
+                <Button variant="contained" onClick={handleHandOver} disabled={saving || handing}>Continue</Button>
+              ) : (
+                <Button variant="contained" onClick={handleSave} disabled={saving || handing}>Save as an Image File...</Button>
+              )}
             </>
           )}
         </DialogActions>
@@ -613,7 +711,10 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
         <DialogTitle>Discard this mosaic?</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
-            {step === 'done' ? 'The mosaic has not been saved. It will be lost.' : 'The fitted layout will be lost.'}
+            {step !== 'done' ? 'The fitted layout will be lost.'
+              : savedTo ? 'The mosaic will not be added to the project.'
+              : purpose === 'pick' || offersProject ? 'The mosaic has not been added to the project or saved. It will be lost.'
+              : 'The mosaic has not been saved. It will be lost.'}
           </Typography>
         </DialogContent>
         <DialogActions>
