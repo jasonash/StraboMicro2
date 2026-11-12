@@ -30,7 +30,7 @@ import {
   change, deltaInGroup, dropPlacement, leaveOut, mainGroup, moveInMosaic, otherGroups, pieceOf, placeOnMosaic, putBack, redo, resetTile,
   separateGroup, snapSides, startEdit, startHistory, tileStatuses, undo, type EditHistory, type StitchEdit,
 } from '../src/services/stitch/stitchEdit.ts';
-import { graphicAreas, hasGraphics, matchPair, snapGroup, tileFeatures, type TileFeatures } from '../src/services/stitch/stitchMatch.ts';
+import { hasGraphics, matchPair, sharedGraphics, snapGroup, tileFeatures, type TileFeatures } from '../src/services/stitch/stitchMatch.ts';
 import { hardPairs, quickPairs, stitchTiles, unplacedTiles, type StitchProgress } from '../src/services/stitch/stitch.ts';
 import { mosaicName } from '../src/utils/mosaicName.ts';
 import { durationText, estimateText, graphicsText, groupText, magnificationText, overlapsText, placedText, progressLines, sizeText, skippedText, tooManyText } from '../src/utils/stitchText.ts';
@@ -331,6 +331,27 @@ if (wanted('math')) {
     rects = graphicRectsOf(mask, w, h);
     check('graphicRectsOf: an area over a fifth of the image is not graphics', rects.length === 1 && rects[0].x >= 690, rects);
     check('graphicRectsOf: an empty mask', graphicRectsOf(new Uint8Array(w * h), w, h).length === 0);
+
+    // sharedGraphics: five images of one size, a bar at the same place in four; dark grains elsewhere
+    const size = { width: 4000, height: 3000 };
+    const bar = { x: 2940, y: 2625, width: 970, height: 280 };
+    const near = (r: { x: number; y: number; width: number; height: number }, by: number) => ({ x: r.x + by, y: r.y - by, width: r.width - by, height: r.height + by });
+    const found = sharedGraphics([size, size, size, size, size, { width: 3000, height: 2000 }], [
+      [near(bar, 0), { x: 300, y: 0, width: 1000, height: 900 }],
+      [{ x: 1200, y: 700, width: 500, height: 500 }, near(bar, 30)],
+      // The bar ran together with a dark grain above it
+      [{ x: 2800, y: 2400, width: 1190, height: 505 }],
+      // No bar in this one; a grain where one other image has a grain too
+      [{ x: 1210, y: 690, width: 500, height: 520 }],
+      [near(bar, 10)],
+      [near(bar, 0)],
+    ]);
+    const isBar = (r: { x: number; y: number; width: number; height: number }) => Math.abs(r.x - bar.x) <= 31 && Math.abs(r.y - bar.y) <= 31 && Math.abs(r.width - bar.width) <= 31;
+    check('sharedGraphics: the bar three images agree on, also for the image where it ran together with a grain', [0, 1, 2, 4].every((i) => found[i].length === 1 && isBar(found[i][0])), found);
+    check('sharedGraphics: a grain only one other image has at that place is not graphics', found[3].length === 0, found[3]);
+    check('sharedGraphics: an image of a size no other has gets none', found[5].length === 0);
+    check('sharedGraphics: two images, the same rectangle in both', sharedGraphics([size, size], [[bar], [near(bar, 10)]]).every((a) => a.length === 1));
+    check('sharedGraphics: two images, different places', sharedGraphics([size, size], [[bar], [{ x: 0, y: 0, width: 900, height: 300 }]]).every((a) => a.length === 0));
   }
   check('overlapsText, groupText', overlapsText(9) === '9 overlaps found so far' && overlapsText(1) === '1 overlap found so far' && groupText(4) === 'Group of 4 that fit each other' && groupText(1) === 'Fits no other image');
   const lines = progressLines({ stage: 'pairs', done: 312, total: 1128 });
@@ -501,7 +522,7 @@ if (wanted('grid')) {
     check('progress: features, pairs, layout in order', stages[0].stage === 'features' && stages[stages.length - 1].stage === 'layout' && stages.some((s) => s.stage === 'pairs' && s.total === 36), stages.length);
     check('seams all good', rateSeams(layout).tiles.every((s) => s === 'good'), rateSeams(layout).tiles);
     check('no other magnification', otherMagnifications(layout.groups[0]).length === 0);
-    check('no graphics seen', features.every((f) => !hasGraphics(f) && graphicAreas(f).length === 0));
+    check('no graphics seen', features.every((f) => !hasGraphics(f)) && sharedGraphics(tiles.map(() => ({ width: TW, height: TH })), features.map((f) => f.graphicRects)).every((a) => a.length === 0));
     const frame = mosaicFrame(layout, layout.groups[0], 10000)!;
     check('mosaic about 5.4 x 4.1 thousand pixels', Math.abs(frame.fullWidth - 5400) < 200 && Math.abs(frame.fullHeight - 4050) < 200 && frame.scale === 1, frame);
   }
@@ -616,11 +637,10 @@ if (wanted('rocks')) {
     check('no overlap joins the two rocks', layout.overlaps.every((o) => all[o.a].id[0] === all[o.b].id[0]), layout.overlaps.map((o) => all[o.a].id[0] + all[o.b].id[0]));
     check('the bars were seen', features.every((f) => hasGraphics(f)), features.map((f) => f.graphic.reduce((s, v) => s + v, 0)));
     // The bar's box is 400 x 90 at (width - 460, height - 130): one rectangle around it, not much larger
-    check('the bar of every tile has its rectangle', features.every((f) => {
-      const areas = graphicAreas(f);
-      return areas.length === 1 && areas[0].x <= TW - 460 && areas[0].y <= TH - 130 && areas[0].x + areas[0].width >= TW - 60 && areas[0].y + areas[0].height >= TH - 40
-        && areas[0].width < 520 && areas[0].height < 210;
-    }), features.map((f) => graphicAreas(f)));
+    const bars = sharedGraphics(all.map(() => ({ width: TW, height: TH })), features.map((f) => f.graphicRects));
+    check('the bar of every tile has its rectangle', bars.every((areas) =>
+      areas.length === 1 && areas[0].x <= TW - 460 && areas[0].y <= TH - 130 && areas[0].x + areas[0].width >= TW - 60 && areas[0].y + areas[0].height >= TH - 40
+        && areas[0].width < 520 && areas[0].height < 210), bars);
     for (const gi of [0, 1]) {
       const acc = accuracy(layout, gi, all.map((t) => t.truth));
       check(`group ${gi + 1}: neighbours agree within 2.5 pixels despite the bars`, acc.max < 2.5, acc);

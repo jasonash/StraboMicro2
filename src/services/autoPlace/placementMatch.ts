@@ -217,7 +217,7 @@ export interface Features {
   count: number;
   width: number;
   height: number;
-  /** Where the burned-in graphics are: rectangles around them, in the image's pixels (the image stitcher keeps them out of seams) */
+  /** Where burned-in graphics may be: rectangles around flat black or white areas, in the image's pixels (candidates, see graphicRectsOf) */
   graphicRects?: Rect[];
 }
 
@@ -261,12 +261,14 @@ function graphicsMask(cv: OpenCV, raw: Mat): Mat {
   return mask;
 }
 
-/** Most rectangles of graphics reported per image */
-const GRAPHIC_RECTS_MOST = 6;
+/** Most rectangles reported per image */
+const GRAPHIC_RECTS_MOST = 24;
 
 /**
- * Rectangles around the burned-in graphics of an image, from its graphics mask (one byte per
- * pixel, not 0 = graphics). Pure. Mask pixels are gathered in cells, touching cells make one
+ * Rectangles around what may be burned-in graphics of an image, from its graphics mask (one byte
+ * per pixel, not 0 = graphics). Pure. Candidates only: flat black or white rock (a grain at
+ * extinction, a hole) is in the mask too; the image stitcher keeps those that repeat at the same
+ * place in several images (stitchMatch.ts sharedGraphics). Mask pixels are gathered in cells, touching cells make one
  * piece, and each piece worth reporting gives its bounding rectangle: a piece must be at least
  * 3% of the image's long side long (specks are not scale bars) and may not cover more than a
  * fifth of the image (that is dark or blown-out rock, not a label). Largest first.

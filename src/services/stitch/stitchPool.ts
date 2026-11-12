@@ -18,7 +18,7 @@
 import type { AffineMatrix } from '@/utils/affineTransform';
 import type { GrayImage, Rect } from '../autoPlace/placementMatch.ts';
 import { solveLayout, type Overlap, type StitchGroup, type StitchLayout, type StitchTile } from './stitchLayout.ts';
-import { graphicAreas as graphicAreasOf, hasGraphics, type MatchLevel, type SnapResult, type TileFeatures } from './stitchMatch.ts';
+import { hasGraphics, sharedGraphics, type MatchLevel, type SnapResult, type TileFeatures } from './stitchMatch.ts';
 import { hardPairs, quickPairs, unplacedTiles, type StitchProgress } from './stitch.ts';
 import type { FromStitchWorker, StitchJob, StitchJobResult, ToStitchWorker } from './stitchJobs.ts';
 
@@ -169,7 +169,8 @@ export function startStitch(tiles: StitchTile[], deps: PoolDeps, options: PoolOp
     });
 
   const graphics: boolean[] = tiles.map(() => false);
-  const graphicAreas: Rect[][] = tiles.map(() => []);
+  /** Per tile: rectangles that may be burned-in graphics (from the quick features, which every tile has) */
+  const candidates: Rect[][] = tiles.map(() => []);
 
   /** Features of every tile at one level, made by whichever worker is free and passed on to the others */
   const makeFeatures = async (level: MatchLevel, onOne: () => void) => {
@@ -178,9 +179,7 @@ export function startStitch(tiles: StitchTile[], deps: PoolDeps, options: PoolOp
       if (result.kind !== 'features') throw new Error('Unexpected answer to a features job');
       const features: TileFeatures = result.features;
       if (hasGraphics(features)) graphics[index] = true;
-      // The harder level sees the image at twice the detail: its rectangles replace the quick ones
-      const areas = graphicAreasOf(features);
-      if (areas.length > 0) graphicAreas[index] = areas;
+      if (level === 'quick') candidates[index] = features.graphicRects;
       if (!closed) {
         // Every worker keeps every tile's features (the one that made them already has them)
         for (const worker of workers) worker.postMessage({ type: 'store', tile: index, features });
@@ -216,7 +215,7 @@ export function startStitch(tiles: StitchTile[], deps: PoolDeps, options: PoolOp
     overlaps.sort((x, y) => x.a - y.a || x.b - y.b);
     const quick = solveLayout(tiles, overlaps);
     const again = hardPairs(quick);
-    if (again.length === 0 || options.hardPass === false || skipping) return { layout: quick, ranHardPass: false, graphics, graphicAreas };
+    if (again.length === 0 || options.hardPass === false || skipping) return { layout: quick, ranHardPass: false, graphics, graphicAreas: sharedGraphics(tiles, candidates) };
 
     const unplaced = unplacedTiles(quick).length;
     const more: Overlap[] = [];
@@ -231,17 +230,17 @@ export function startStitch(tiles: StitchTile[], deps: PoolDeps, options: PoolOp
         report({ stage: 'hard-pairs', done: ++done, total: again.length, overlaps: overlaps.length + more.length, unplaced });
       });
     } catch (error) {
-      if (skipping && !cancelled && !failure) return { layout: quick, ranHardPass: false, graphics, graphicAreas };
+      if (skipping && !cancelled && !failure) return { layout: quick, ranHardPass: false, graphics, graphicAreas: sharedGraphics(tiles, candidates) };
       throw error;
     }
-    if (skipping) return { layout: quick, ranHardPass: false, graphics, graphicAreas };
+    if (skipping) return { layout: quick, ranHardPass: false, graphics, graphicAreas: sharedGraphics(tiles, candidates) };
     report({ stage: 'layout', done: 0, total: 1, overlaps: overlaps.length + more.length });
     more.sort((x, y) => x.a - y.a || x.b - y.b);
-    return { layout: solveLayout(tiles, [...quick.overlaps, ...more]), ranHardPass: true, graphics, graphicAreas };
+    return { layout: solveLayout(tiles, [...quick.overlaps, ...more]), ranHardPass: true, graphics, graphicAreas: sharedGraphics(tiles, candidates) };
   };
 
   const done = run().catch((error: unknown): PoolResult => {
-    if (cancelled) return { layout: null, ranHardPass: false, graphics, graphicAreas };
+    if (cancelled) return { layout: null, ranHardPass: false, graphics, graphicAreas: sharedGraphics(tiles, candidates) };
     throw error;
   });
 

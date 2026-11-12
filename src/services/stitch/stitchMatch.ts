@@ -55,7 +55,7 @@ export interface TileFeatures {
   /** count * bytes */
   descriptors: Uint8Array;
   bytes: number;
-  /** Rectangles around burned-in graphics (a scale bar, a label), full-size pixels */
+  /** Rectangles around flat black or white areas, full-size pixels: candidates for burned-in graphics (sharedGraphics) */
   graphicRects: Rect[];
 }
 
@@ -98,14 +98,62 @@ export function hasGraphics(f: TileFeatures): boolean {
   return n >= 20;
 }
 
+const area = (r: Rect) => r.width * r.height;
+function shared(a: Rect, b: Rect): number {
+  const w = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+/** How alike two rectangles are: shared area over joint area */
+const alike = (a: Rect, b: Rect) => {
+  const s = shared(a, b);
+  return s / (area(a) + area(b) - s);
+};
+const SAME_RECT = 0.6;
+
 /**
- * Where a tile's burned-in graphics are, for the mosaic builder (it uses another tile's pixels
- * there when one covers the spot): the rectangles around them, when the tile has graphics worth
- * telling about. Empty for a tile without, and for a line drawing (it is graphics all over).
+ * Where the burned-in graphics of each tile are (a scale bar, a label), for the mosaic builder
+ * and the notice. Pure. A microscope burns its scale bar into the same pixels of every image,
+ * while a flat black grain or a hole sits somewhere else in each: of the candidate rectangles
+ * (TileFeatures.graphicRects) those are graphics that at least half of the other images of the
+ * same size have at the same place. A tile whose candidate there ran together with a dark grain
+ * beside it still gets the rectangle the others agree on.
+ * A label burned into one image only is not found; images of a size no other image has get none.
  */
-export function graphicAreas(f: TileFeatures): Rect[] {
-  if (!hasGraphics(f) || graphicShare(f) > 0.5) return [];
-  return f.graphicRects;
+export function sharedGraphics(tiles: Array<{ width: number; height: number }>, candidates: Rect[][]): Rect[][] {
+  const out: Rect[][] = tiles.map(() => []);
+  const bySize = new Map<string, number[]>();
+  tiles.forEach((t, i) => {
+    const key = `${t.width}x${t.height}`;
+    bySize.set(key, [...(bySize.get(key) ?? []), i]);
+  });
+  for (const group of bySize.values()) {
+    if (group.length < 2) continue;
+    const needed = Math.max(1, Math.ceil((group.length - 1) / 2));
+    // Rectangles that enough other images have too, gathered into one per place
+    const agreed: Rect[][] = [];
+    for (const i of group) {
+      for (const r of candidates[i] ?? []) {
+        let others = 0;
+        for (const j of group) if (j !== i && (candidates[j] ?? []).some((q) => alike(r, q) >= SAME_RECT)) others++;
+        if (others < needed) continue;
+        const cluster = agreed.find((c) => alike(c[0], r) >= SAME_RECT);
+        if (cluster) cluster.push(r);
+        else agreed.push([r]);
+      }
+    }
+    const median = (values: number[]) => values.sort((a, b) => a - b)[values.length >> 1];
+    const places: Rect[] = agreed.map((c) => {
+      const x0 = median(c.map((r) => r.x));
+      const y0 = median(c.map((r) => r.y));
+      return { x: x0, y: y0, width: median(c.map((r) => r.x + r.width)) - x0, height: median(c.map((r) => r.y + r.height)) - y0 };
+    });
+    for (const i of group) {
+      // The image has graphics at a place when one of its candidates covers most of it
+      out[i] = places.filter((p) => (candidates[i] ?? []).some((r) => shared(p, r) >= 0.8 * area(p)));
+    }
+  }
+  return out;
 }
 
 function graphicShare(f: TileFeatures): number {
