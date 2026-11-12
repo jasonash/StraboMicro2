@@ -366,14 +366,28 @@ export interface MosaicFrame {
 
 /**
  * The rectangle that holds every pixel of every included tile of a group, and the saved size.
- * The mosaic's pixel size is that of the group's median tile, so a group whose anchor happens
- * to be an odd-sized tile does not change the result.
+ * The mosaic's pixel size is that of the group's median tile and it is turned so that the tiles
+ * are upright on average, so a group whose anchor happens to be an odd-sized or turned tile
+ * does not change the result.
  */
 export function mosaicFrame(layout: StitchLayout, group: StitchGroup, maxSide: number, leftOut: ReadonlySet<number> = new Set()): MosaicFrame | null {
   const included = group.tiles.filter((t) => !leftOut.has(t));
   if (included.length === 0) return null;
   const scales = included.map((t) => sizeAndTurn(group.placements[t]).scale).sort((a, b) => a - b);
   const unit = 1 / scales[scales.length >> 1];
+  // Level: the mosaic is turned so that the tiles are upright on average (the frame is the
+  // anchor's, and the anchor may be one of the more turned tiles of a hand-held set)
+  let sin = 0;
+  let cos = 0;
+  for (const t of included) {
+    const rad = (sizeAndTurn(group.placements[t]).degrees * Math.PI) / 180;
+    sin += Math.sin(rad);
+    cos += Math.cos(rad);
+  }
+  const level = Math.atan2(sin, cos);
+  const upright: AffineMatrix = [Math.cos(level), Math.sin(level), 0, -Math.sin(level), Math.cos(level), 0];
+  const placed: Record<number, AffineMatrix> = {};
+  for (const t of included) placed[t] = multiply(upright, group.placements[t]);
   let x0 = Infinity;
   let y0 = Infinity;
   let x1 = -Infinity;
@@ -381,7 +395,7 @@ export function mosaicFrame(layout: StitchLayout, group: StitchGroup, maxSide: n
   for (const t of included) {
     const { width, height } = layout.tiles[t];
     for (const [x, y] of [[0, 0], [width, 0], [width, height], [0, height]]) {
-      const [px, py] = apply(group.placements[t], x, y);
+      const [px, py] = apply(placed[t], x, y);
       x0 = Math.min(x0, px);
       y0 = Math.min(y0, py);
       x1 = Math.max(x1, px);
@@ -394,7 +408,7 @@ export function mosaicFrame(layout: StitchLayout, group: StitchGroup, maxSide: n
   const s = unit * scale;
   const toSaved: AffineMatrix = [s, 0, -x0 * s, 0, s, -y0 * s];
   const toMosaic: Record<number, AffineMatrix> = {};
-  for (const t of included) toMosaic[t] = multiply(toSaved, group.placements[t]);
+  for (const t of included) toMosaic[t] = multiply(toSaved, placed[t]);
   return {
     fullWidth: Math.round(fullWidth),
     fullHeight: Math.round(fullHeight),

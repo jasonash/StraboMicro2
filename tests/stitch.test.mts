@@ -241,6 +241,17 @@ if (wanted('math')) {
     const f = mosaicFrame(oddAnchor, oddAnchor.groups[0], 10000)!;
     check('mosaicFrame: pixel size of the median tile, not the anchor', f.fullWidth === 2500 && Math.abs(sizeAndTurn(f.toMosaic[1]).scale - 1) < 1e-9, f.fullWidth);
     check('mosaicPixelsPerUnit follows the saved share', mosaicPixelsPerUnit(1250, capped) === 625);
+    // The same two tiles in the frame of an anchor that was itself turned 10 degrees: the mosaic is level all the same
+    const tilted: StitchLayout = {
+      ...two,
+      groups: [{ tiles: [0, 1], placements: { 0: multiply(turn(10, 1, 300, -50), turn(0, 1, 0, 0)), 1: multiply(turn(10, 1, 300, -50), turn(0, 1, 850, 0)) } }],
+    };
+    const level = mosaicFrame(tilted, tilted.groups[0], 10000)!;
+    check('mosaicFrame: level whatever the anchor\'s turn', level.fullWidth === 1850 && level.fullHeight === 800 && Math.abs(sizeAndTurn(level.toMosaic[0]).degrees) < 1e-9 && far(level.toMosaic[1], whole.toMosaic[1], 1000, 800) < 1e-6, [level.fullWidth, level.fullHeight]);
+    // Tiles turned by different amounts: upright on average
+    const mixed: StitchLayout = { ...two, groups: [{ tiles: [0, 1], placements: { 0: turn(-4, 1, 0, 0), 1: turn(12, 1, 850, 0) } }] };
+    const m = mosaicFrame(mixed, mixed.groups[0], 10000)!;
+    check('mosaicFrame: tiles upright on average', Math.abs(sizeAndTurn(m.toMosaic[0]).degrees + 8) < 1e-9 && Math.abs(sizeAndTurn(m.toMosaic[1]).degrees - 8) < 1e-9, [sizeAndTurn(m.toMosaic[0]).degrees, sizeAndTurn(m.toMosaic[1]).degrees]);
   }
 }
 
