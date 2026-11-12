@@ -20,10 +20,12 @@ declare global {
       invitations: typeof useInvitationsStore;
       presence: typeof usePresenceStore;
       grain: typeof useGrainSpotStore;
+      /** The image stitcher's session functions, loaded when first asked for */
+      stitch: () => Promise<typeof import('@/services/stitch/stitchApp')>;
     };
     /** The viewer's zoom and pan (TiledViewer), so a test can click at image coordinates */
     __e2eView?: { zoom: number; position: { x: number; y: number } };
   }
 }
 
-window.__e2e = { app: useAppStore, sync: useSyncStore, auth: useAuthStore, invitations: useInvitationsStore, presence: usePresenceStore, grain: useGrainSpotStore };
+window.__e2e = { app: useAppStore, sync: useSyncStore, auth: useAuthStore, invitations: useInvitationsStore, presence: usePresenceStore, grain: useGrainSpotStore, stitch: () => import('@/services/stitch/stitchApp') };

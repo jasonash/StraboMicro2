@@ -1429,6 +1429,36 @@ interface Window {
     onConfigureMineralColors: (callback: () => void) => Unsubscribe;
     onSpotColorMode: (callback: (mode: 'spot-color' | 'mineral-color') => void) => Unsubscribe;
 
+    // Image stitcher (electron/stitchService.js). A session is one run of the wizard.
+    stitch: {
+      machine: () => Promise<{ processors: number; memoryGb: number }>;
+      /** Checks one chosen image and makes its small preview copy (long side at most 2048 px) */
+      prepare: (session: string, index: number, imagePath: string) => Promise<
+        | { ok: true; width: number; height: number; previewPath: string; previewWidth: number; previewHeight: number; thumbnail: string }
+        | { ok: false; error: string }
+      >;
+      build: (session: string, job: {
+        tiles: Array<{
+          path: string;
+          width: number;
+          height: number;
+          /** Tile pixel -> mosaic pixel */
+          matrix: [number, number, number, number, number, number];
+          /** Areas (tile pixels) used only where no other tile covers */
+          masks?: Array<{ x: number; y: number; width: number; height: number }>;
+        }>;
+        width: number;
+        height: number;
+        crop?: { left: number; top: number; width: number; height: number };
+        fill?: [number, number, number];
+      }) => Promise<{ success: boolean; cancelled?: boolean; error?: string; path?: string; width?: number; height?: number }>;
+      cancelBuild: (session: string) => Promise<void>;
+      /** done and total are rows of the mosaic */
+      onBuildProgress: (callback: (progress: { session: string; done: number; total: number }) => void) => Unsubscribe;
+      saveAs: (session: string, outputPath: string, format: 'jpeg' | 'png' | 'tiff' | 'tiff-plain') => Promise<{ success: boolean; error?: string; path?: string }>;
+      cleanup: (session: string) => Promise<void>;
+    };
+
     // Grain Spot model (SAM 2.1 tiny, fp32 encoder + int8 decoder; electron/grainSpotModel.js)
     grainSpot: {
       status: () => Promise<{ available: boolean; totalBytes: number }>;

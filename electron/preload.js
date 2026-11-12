@@ -918,4 +918,19 @@ contextBridge.exposeInMainWorld('api', {
     },
     load: () => ipcRenderer.invoke('grainspot:load'),
   },
+
+  // Image stitcher (electron/stitchService.js)
+  stitch: {
+    machine: () => ipcRenderer.invoke('stitch:machine'),
+    prepare: (session, index, imagePath) => ipcRenderer.invoke('stitch:prepare', session, index, imagePath),
+    build: (session, job) => ipcRenderer.invoke('stitch:build', session, job),
+    cancelBuild: (session) => ipcRenderer.invoke('stitch:cancel-build', session),
+    onBuildProgress: (callback) => {
+      const handler = (_event, progress) => callback(progress);
+      ipcRenderer.on('stitch:build-progress', handler);
+      return () => ipcRenderer.removeListener('stitch:build-progress', handler);
+    },
+    saveAs: (session, outputPath, format) => ipcRenderer.invoke('stitch:save-as', session, outputPath, format),
+    cleanup: (session) => ipcRenderer.invoke('stitch:cleanup', session),
+  },
 });
