@@ -138,6 +138,8 @@ export interface BuildChoices {
   leftOut?: ReadonlySet<number>;
   fill?: [number, number, number];
   crop?: { left: number; top: number; width: number; height: number };
+  /** Per tile: areas (full-size pixels) to take from another tile where one covers them (burned-in scale bars) */
+  masks?: Array<Array<{ x: number; y: number; width: number; height: number }> | undefined>;
 }
 
 /** Size of the mosaic of one group, full and as it will be saved */
@@ -164,7 +166,8 @@ export async function buildGroup(
     const result = await a.stitch.build(session, {
       tiles: Object.entries(frame.toMosaic).map(([tile, matrix]) => {
         const image = images[Number(tile)];
-        return { path: image.path, width: image.width, height: image.height, matrix };
+        const masks = choices.masks?.[Number(tile)];
+        return { path: image.path, width: image.width, height: image.height, matrix, ...(masks && masks.length > 0 ? { masks } : {}) };
       }),
       width: frame.width,
       height: frame.height,

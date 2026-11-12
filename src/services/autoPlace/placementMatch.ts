@@ -217,6 +217,8 @@ export interface Features {
   count: number;
   width: number;
   height: number;
+  /** Where the burned-in graphics are: rectangles around them, in the image's pixels (the image stitcher keeps them out of seams) */
+  graphicRects?: Rect[];
 }
 
 export function freeFeatures(f: Features) {
@@ -257,6 +259,71 @@ function graphicsMask(cv: OpenCV, raw: Mat): Mat {
   cv.dilate(flatSaturated, mask, k15);
   [dark, bright, saturated, k5, hi, lo, range, flat, flatSaturated, k3, k15].forEach((m) => m.delete());
   return mask;
+}
+
+/** Most rectangles of graphics reported per image */
+const GRAPHIC_RECTS_MOST = 6;
+
+/**
+ * Rectangles around the burned-in graphics of an image, from its graphics mask (one byte per
+ * pixel, not 0 = graphics). Pure. Mask pixels are gathered in cells, touching cells make one
+ * piece, and each piece worth reporting gives its bounding rectangle: a piece must be at least
+ * 3% of the image's long side long (specks are not scale bars) and may not cover more than a
+ * fifth of the image (that is dark or blown-out rock, not a label). Largest first.
+ */
+export function graphicRectsOf(mask: Uint8Array, width: number, height: number): Rect[] {
+  const cell = Math.max(4, Math.round(Math.max(width, height) / 128));
+  const cols = Math.ceil(width / cell);
+  const rows = Math.ceil(height / cell);
+  const on = new Uint8Array(cols * rows);
+  for (let y = 0; y < height; y++) {
+    const r = Math.floor(y / cell) * cols;
+    const row = y * width;
+    for (let x = 0; x < width; x++) if (mask[row + x]) on[r + Math.floor(x / cell)] = 1;
+  }
+  const rects: Array<Rect & { cells: number }> = [];
+  const seen = new Uint8Array(cols * rows);
+  for (let start = 0; start < on.length; start++) {
+    if (!on[start] || seen[start]) continue;
+    let c0 = cols;
+    let c1 = -1;
+    let r0 = rows;
+    let r1 = -1;
+    let cells = 0;
+    const todo = [start];
+    seen[start] = 1;
+    while (todo.length) {
+      const at = todo.pop()!;
+      const c = at % cols;
+      const r = (at - c) / cols;
+      cells++;
+      if (c < c0) c0 = c;
+      if (c > c1) c1 = c;
+      if (r < r0) r0 = r;
+      if (r > r1) r1 = r;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nc = c + dc;
+          const nr = r + dr;
+          if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+          const n = nr * cols + nc;
+          if (on[n] && !seen[n]) {
+            seen[n] = 1;
+            todo.push(n);
+          }
+        }
+      }
+    }
+    const x = c0 * cell;
+    const y = r0 * cell;
+    const w = Math.min(width, (c1 + 1) * cell) - x;
+    const h = Math.min(height, (r1 + 1) * cell) - y;
+    if (Math.max(w, h) < 0.03 * Math.max(width, height)) continue;
+    if (w * h > 0.2 * width * height) continue;
+    rects.push({ x, y, width: w, height: h, cells });
+  }
+  rects.sort((a, b) => b.cells - a.cells);
+  return rects.slice(0, GRAPHIC_RECTS_MOST).map(({ x, y, width: w, height: h }) => ({ x, y, width: w, height: h }));
 }
 
 /** Indexes of at most cap keypoints, the strongest of each cell of a 16 x 16 grid, spread evenly */
@@ -328,9 +395,10 @@ export function findFeatures(cv: OpenCV, raw: Mat, cap: number): Features {
     kept.set(descriptors.data.subarray(k * bytes, (k + 1) * bytes), i * bytes);
   });
   descriptors.delete();
+  const graphicRects = graphicRectsOf(mask.data, raw.cols, raw.rows);
   mask.delete();
   const limited = cv.matFromArray(count, bytes, cv.CV_8U, Array.from(kept));
-  return { pts, graphic, descriptors: limited, count, width: raw.cols, height: raw.rows };
+  return { pts, graphic, descriptors: limited, count, width: raw.cols, height: raw.rows, graphicRects };
 }
 
 function graphicShare(f: Features): number {

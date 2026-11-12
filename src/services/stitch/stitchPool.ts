@@ -16,9 +16,9 @@
  */
 
 import type { AffineMatrix } from '@/utils/affineTransform';
-import type { GrayImage } from '../autoPlace/placementMatch.ts';
+import type { GrayImage, Rect } from '../autoPlace/placementMatch.ts';
 import { solveLayout, type Overlap, type StitchGroup, type StitchLayout, type StitchTile } from './stitchLayout.ts';
-import { hasGraphics, type MatchLevel, type SnapResult, type TileFeatures } from './stitchMatch.ts';
+import { graphicAreas as graphicAreasOf, hasGraphics, type MatchLevel, type SnapResult, type TileFeatures } from './stitchMatch.ts';
 import { hardPairs, quickPairs, unplacedTiles, type StitchProgress } from './stitch.ts';
 import type { FromStitchWorker, StitchJob, StitchJobResult, ToStitchWorker } from './stitchJobs.ts';
 
@@ -53,6 +53,8 @@ export interface PoolResult {
   ranHardPass: boolean;
   /** Per tile: burned-in graphics (a scale bar, a label) were seen */
   graphics: boolean[];
+  /** Per tile: rectangles around its burned-in graphics, full-size pixels (empty: none) */
+  graphicAreas: Rect[][];
 }
 
 export interface StitchRun {
@@ -167,6 +169,7 @@ export function startStitch(tiles: StitchTile[], deps: PoolDeps, options: PoolOp
     });
 
   const graphics: boolean[] = tiles.map(() => false);
+  const graphicAreas: Rect[][] = tiles.map(() => []);
 
   /** Features of every tile at one level, made by whichever worker is free and passed on to the others */
   const makeFeatures = async (level: MatchLevel, onOne: () => void) => {
@@ -175,6 +178,9 @@ export function startStitch(tiles: StitchTile[], deps: PoolDeps, options: PoolOp
       if (result.kind !== 'features') throw new Error('Unexpected answer to a features job');
       const features: TileFeatures = result.features;
       if (hasGraphics(features)) graphics[index] = true;
+      // The harder level sees the image at twice the detail: its rectangles replace the quick ones
+      const areas = graphicAreasOf(features);
+      if (areas.length > 0) graphicAreas[index] = areas;
       if (!closed) {
         // Every worker keeps every tile's features (the one that made them already has them)
         for (const worker of workers) worker.postMessage({ type: 'store', tile: index, features });
@@ -210,7 +216,7 @@ export function startStitch(tiles: StitchTile[], deps: PoolDeps, options: PoolOp
     overlaps.sort((x, y) => x.a - y.a || x.b - y.b);
     const quick = solveLayout(tiles, overlaps);
     const again = hardPairs(quick);
-    if (again.length === 0 || options.hardPass === false || skipping) return { layout: quick, ranHardPass: false, graphics };
+    if (again.length === 0 || options.hardPass === false || skipping) return { layout: quick, ranHardPass: false, graphics, graphicAreas };
 
     const unplaced = unplacedTiles(quick).length;
     const more: Overlap[] = [];
@@ -225,17 +231,17 @@ export function startStitch(tiles: StitchTile[], deps: PoolDeps, options: PoolOp
         report({ stage: 'hard-pairs', done: ++done, total: again.length, overlaps: overlaps.length + more.length, unplaced });
       });
     } catch (error) {
-      if (skipping && !cancelled && !failure) return { layout: quick, ranHardPass: false, graphics };
+      if (skipping && !cancelled && !failure) return { layout: quick, ranHardPass: false, graphics, graphicAreas };
       throw error;
     }
-    if (skipping) return { layout: quick, ranHardPass: false, graphics };
+    if (skipping) return { layout: quick, ranHardPass: false, graphics, graphicAreas };
     report({ stage: 'layout', done: 0, total: 1, overlaps: overlaps.length + more.length });
     more.sort((x, y) => x.a - y.a || x.b - y.b);
-    return { layout: solveLayout(tiles, [...quick.overlaps, ...more]), ranHardPass: true, graphics };
+    return { layout: solveLayout(tiles, [...quick.overlaps, ...more]), ranHardPass: true, graphics, graphicAreas };
   };
 
   const done = run().catch((error: unknown): PoolResult => {
-    if (cancelled) return { layout: null, ranHardPass: false, graphics };
+    if (cancelled) return { layout: null, ranHardPass: false, graphics, graphicAreas };
     throw error;
   });
 

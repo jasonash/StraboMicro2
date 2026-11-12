@@ -50,11 +50,11 @@ import {
 import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
 import { mosaicName } from '@/utils/mosaicName';
 import {
-  estimateText, groupText, overlapsText, placedText, progressLines, sizeText, skippedText, tooManyText,
+  estimateText, graphicsText, groupText, magnificationText, overlapsText, placedText, progressLines, sizeText, skippedText, tooManyText,
   type ProgressStage,
 } from '@/utils/stitchText';
 import type { AffineMatrix } from '@/utils/affineTransform';
-import { coveredRectangle, groupOfTile, hasEmptyAreas, type Overlap, type StitchGroup, type StitchLayout } from '@/services/stitch/stitchLayout';
+import { coveredRectangle, groupOfTile, hasEmptyAreas, otherMagnifications, type Overlap, type StitchGroup, type StitchLayout } from '@/services/stitch/stitchLayout';
 import {
   change, deltaInGroup, dropPlacement, leaveOut, mainGroup, moveInMosaic, otherGroups as groupsNotPlaced, pieceOf, placeOnMosaic, putBack, redo,
   resetTile, separateGroup, snapSides, startEdit, startHistory, tileStatuses, undo, type EditHistory, type StitchEdit,
@@ -119,6 +119,8 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
   const [automatic, setAutomatic] = useState<StitchLayout | null>(null);
   /** The layout as changed by hand since, with its undo steps */
   const [history, setHistory] = useState<EditHistory | null>(null);
+  /** Per tile: rectangles around burned-in graphics (a scale bar, a label), full-size pixels */
+  const [graphicAreas, setGraphicAreas] = useState<Array<Array<{ x: number; y: number; width: number; height: number }>>>([]);
   /** An exact fit is being looked for where an image was dropped */
   const [snapping, setSnapping] = useState(false);
   /** What the last change by hand came to ("Snapped to fit.") */
@@ -284,6 +286,7 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
       }
       setFitted(ready);
       setAutomatic(result.layout);
+      setGraphicAreas(result.graphicAreas);
       setHistory(startHistory(startEdit(result.layout)));
       setMessage(null);
       setSelected(null);
@@ -323,6 +326,14 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
   const otherGroups = edit ? groupsNotPlaced(edit) : [];
   const statuses = useMemo(() => (edit ? tileStatuses(edit) : {}), [edit]);
   const piece = useMemo(() => (edit && selected !== null ? pieceOf(edit, selected) : undefined), [edit, selected]);
+  /** Images of the mosaic with a scale bar or label burned in */
+  const withGraphics = included.filter((t) => (graphicAreas[t]?.length ?? 0) > 0);
+  /** Images of the mosaic at another magnification than the rest */
+  const oddOnes = useMemo(
+    () => (main && included.length > 2 ? otherMagnifications({ tiles: included, placements: main.placements }) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [main, leftOut],
+  );
 
   /** A change by hand: one undo step (changes with the same joins text one after the other are one step) */
   const applyEdit = (next: StitchEdit, joins?: string) => {
@@ -425,7 +436,7 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
       fitted,
       layout,
       main,
-      { leftOut, fill: fill === 'white' ? [255, 255, 255] : [0, 0, 0], crop: crop ?? undefined },
+      { leftOut, fill: fill === 'white' ? [255, 255, 255] : [0, 0, 0], crop: crop ?? undefined, masks: graphicAreas },
       (done, total) => {
         if (life.current === mine) setBuildRows({ done, total });
       },
@@ -564,6 +575,7 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
               </Stack>
             )}
             {status === 'hand' && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Placed by hand</Typography>}
+            {where === 'placed' && (graphicAreas[tile]?.length ?? 0) > 0 && <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>Scale bar or label</Typography>}
           </Box>
         </ListItemButton>
       </ListItem>
@@ -709,6 +721,7 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
                   selected={selected}
                   onSelect={setSelected}
                   crop={crop}
+                  graphicAreas={graphicAreas}
                   statuses={statuses}
                   piece={piece}
                   busy={snapping}
@@ -776,6 +789,20 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
                 </>
               )}
             </Stack>
+            {withGraphics.length > 0 && included.length > 1 && (
+              <Alert severity="info" sx={{ mt: 1, py: 0 }} data-testid="stitch-graphics">{graphicsText(withGraphics.length)}</Alert>
+            )}
+            {oddOnes.map(({ tile, factor }) => (
+              <Alert
+                key={tile}
+                severity="warning"
+                sx={{ mt: 1, py: 0 }}
+                data-testid="stitch-magnification"
+                action={<Button color="inherit" size="small" disabled={snapping} onClick={() => toggleLeftOut(tile)} sx={{ whiteSpace: 'nowrap' }}>Leave Out</Button>}
+              >
+                {magnificationText(fileName(fitted[tile]?.path ?? ''), factor)}
+              </Alert>
+            ))}
             {placedCount === 0 && included.length < 2 && (
               <Alert severity="warning" sx={{ mt: 1 }}>
                 No two of these images were found to overlap. Check that they show neighboring parts of the same area with some overlap, under the same lighting. You can also place them by hand: drag an image from the list onto the canvas.

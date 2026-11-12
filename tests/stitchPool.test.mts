@@ -136,6 +136,7 @@ let gridLayout: StitchLayout | null = null;
   }
   check('no harder pass', !result.ranHardPass);
   check('the burned-in bars were seen on every tile', result.graphics.length === 9 && result.graphics.every(Boolean), result.graphics);
+  check('every tile reports the rectangle around its bar', result.graphicAreas.length === 9 && result.graphicAreas.every((a) => a.length === 1 && a[0].width > 380 && a[0].width < 520), result.graphicAreas);
   const last = (stage: string) => stages.filter((s) => s.stage === stage).pop();
   check('progress: every tile and every pair counted', last('features')?.done === 9 && last('pairs')?.done === 36 && last('pairs')?.total === 36, [last('features'), last('pairs')]);
   check('progress: counts only go up within a stage', stages.every((s, k) => k === 0 || stages[k - 1].stage !== s.stage || stages[k - 1].done <= s.done));

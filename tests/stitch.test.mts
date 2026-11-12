@@ -19,7 +19,7 @@ import os from 'os';
 import path from 'path';
 import { createRequire } from 'module';
 import sharp from 'sharp';
-import { apply, fitSimilarity, invert, memorySource, multiply, type GrayImage, type OpenCV } from '../src/services/autoPlace/placementMatch.ts';
+import { apply, fitSimilarity, graphicRectsOf, invert, memorySource, multiply, type GrayImage, type OpenCV } from '../src/services/autoPlace/placementMatch.ts';
 import type { AffineMatrix } from '../src/utils/affineTransform.ts';
 import {
   coveredRectangle, fitGroupToTarget, groupOfTile, groupsOf, groupToMosaic, hasEmptyAreas, joinGroups, mosaicFrame, mosaicPixelsPerUnit, otherMagnifications, placeGroup,
@@ -30,10 +30,10 @@ import {
   change, deltaInGroup, dropPlacement, leaveOut, mainGroup, moveInMosaic, otherGroups, pieceOf, placeOnMosaic, putBack, redo, resetTile,
   separateGroup, snapSides, startEdit, startHistory, tileStatuses, undo, type EditHistory, type StitchEdit,
 } from '../src/services/stitch/stitchEdit.ts';
-import { hasGraphics, matchPair, snapGroup, tileFeatures, type TileFeatures } from '../src/services/stitch/stitchMatch.ts';
+import { graphicAreas, hasGraphics, matchPair, snapGroup, tileFeatures, type TileFeatures } from '../src/services/stitch/stitchMatch.ts';
 import { hardPairs, quickPairs, stitchTiles, unplacedTiles, type StitchProgress } from '../src/services/stitch/stitch.ts';
 import { mosaicName } from '../src/utils/mosaicName.ts';
-import { durationText, estimateText, groupText, overlapsText, placedText, progressLines, sizeText, skippedText, tooManyText } from '../src/utils/stitchText.ts';
+import { durationText, estimateText, graphicsText, groupText, magnificationText, overlapsText, placedText, progressLines, sizeText, skippedText, tooManyText } from '../src/utils/stitchText.ts';
 import { accuracy, cutTile, cutTiles, makeScene, randomOf, truthOf, type Accuracy, type CutTile } from './stitchFixtures.mts';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -313,6 +313,25 @@ if (wanted('math')) {
   check('estimateText', estimateText(120, 200) === '120 images: this may take about 4 minutes.');
   check('tooManyText', tooManyText(240, 200) === '240 images are more than can be stitched in one go (200 at most). Stitch them in parts.');
   check('skippedText', skippedText(1) === '1 image cannot be used and will be skipped.' && skippedText(2) === '2 images cannot be used and will be skipped.');
+  check('graphicsText', graphicsText(1).startsWith('1 image seems to have a scale bar or label burned in') && graphicsText(4).startsWith('4 images seem to have a scale bar'));
+  check('magnificationText: more magnified', magnificationText('d.jpg', 2.04).startsWith('"d.jpg" is about 2 times more magnified than the other images.') && magnificationText('d.jpg', 2.04).includes('"Place automatically on parent"'), magnificationText('d.jpg', 2.04));
+  check('magnificationText: less magnified, and a factor that is not whole', magnificationText('w.jpg', 0.4).startsWith('"w.jpg" is about 2.5 times less magnified') && magnificationText('d.jpg', 1.7).includes('about 1.7 times more'), magnificationText('w.jpg', 0.4));
+  {
+    // A mask of 1000 x 800 with a label box, a speck, and a large dark area
+    const w = 1000;
+    const h = 800;
+    const mask = new Uint8Array(w * h);
+    const fillMask = (x0: number, y0: number, x1: number, y1: number) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) mask[y * w + x] = 255; };
+    fillMask(700, 690, 930, 760);
+    fillMask(100, 100, 112, 110);
+    let rects = graphicRectsOf(mask, w, h);
+    check('graphicRectsOf: the label box, not the speck', rects.length === 1 && rects[0].x <= 700 && rects[0].y <= 690 && rects[0].x + rects[0].width >= 930 && rects[0].y + rects[0].height >= 760
+      && rects[0].width < 260 && rects[0].height < 100, rects);
+    fillMask(0, 0, 600, 500);
+    rects = graphicRectsOf(mask, w, h);
+    check('graphicRectsOf: an area over a fifth of the image is not graphics', rects.length === 1 && rects[0].x >= 690, rects);
+    check('graphicRectsOf: an empty mask', graphicRectsOf(new Uint8Array(w * h), w, h).length === 0);
+  }
   check('overlapsText, groupText', overlapsText(9) === '9 overlaps found so far' && overlapsText(1) === '1 overlap found so far' && groupText(4) === 'Group of 4 that fit each other' && groupText(1) === 'Fits no other image');
   const lines = progressLines({ stage: 'pairs', done: 312, total: 1128 });
   check('progressLines: comparing', JSON.stringify(lines.map((l) => [l.label, l.count, l.state])) === JSON.stringify([['Reading images', '', 'done'], ['Comparing images', '312 of 1,128', 'now'], ['Working out the layout', '', 'waiting']]) && Math.round(lines[1].percent!) === 28, lines);
@@ -482,7 +501,7 @@ if (wanted('grid')) {
     check('progress: features, pairs, layout in order', stages[0].stage === 'features' && stages[stages.length - 1].stage === 'layout' && stages.some((s) => s.stage === 'pairs' && s.total === 36), stages.length);
     check('seams all good', rateSeams(layout).tiles.every((s) => s === 'good'), rateSeams(layout).tiles);
     check('no other magnification', otherMagnifications(layout.groups[0]).length === 0);
-    check('no graphics seen', features.every((f) => !hasGraphics(f)));
+    check('no graphics seen', features.every((f) => !hasGraphics(f) && graphicAreas(f).length === 0));
     const frame = mosaicFrame(layout, layout.groups[0], 10000)!;
     check('mosaic about 5.4 x 4.1 thousand pixels', Math.abs(frame.fullWidth - 5400) < 200 && Math.abs(frame.fullHeight - 4050) < 200 && frame.scale === 1, frame);
   }
@@ -596,6 +615,12 @@ if (wanted('rocks')) {
     check('two groups of four', JSON.stringify(sizes) === '[4,4]', sizes);
     check('no overlap joins the two rocks', layout.overlaps.every((o) => all[o.a].id[0] === all[o.b].id[0]), layout.overlaps.map((o) => all[o.a].id[0] + all[o.b].id[0]));
     check('the bars were seen', features.every((f) => hasGraphics(f)), features.map((f) => f.graphic.reduce((s, v) => s + v, 0)));
+    // The bar's box is 400 x 90 at (width - 460, height - 130): one rectangle around it, not much larger
+    check('the bar of every tile has its rectangle', features.every((f) => {
+      const areas = graphicAreas(f);
+      return areas.length === 1 && areas[0].x <= TW - 460 && areas[0].y <= TH - 130 && areas[0].x + areas[0].width >= TW - 60 && areas[0].y + areas[0].height >= TH - 40
+        && areas[0].width < 520 && areas[0].height < 210;
+    }), features.map((f) => graphicAreas(f)));
     for (const gi of [0, 1]) {
       const acc = accuracy(layout, gi, all.map((t) => t.truth));
       check(`group ${gi + 1}: neighbours agree within 2.5 pixels despite the bars`, acc.max < 2.5, acc);

@@ -13,7 +13,7 @@ import sharp from 'sharp';
 import type { Locator, Page } from '@playwright/test';
 import { test, expect } from '../lib/test';
 import { ACCOUNTS } from '../lib/copy';
-import { cutTiles, makeScene } from '../../stitchFixtures.mts';
+import { cutTile, cutTiles, makeScene, randomOf, truthOf } from '../../stitchFixtures.mts';
 import { writeTiles } from '../lib/stitchTiles';
 
 const TW = 2000;
@@ -185,5 +185,102 @@ test('Image Stitcher: move, snap, nudge, place by hand, undo, reset, build', asy
   expect([meta.width, meta.height]).toEqual(final);
   await done.getByRole('button', { name: 'Close' }).click();
   expect(await ana.unansweredDialogs()).toEqual([]);
+  expect(ana.consoleErrors.filter((l) => /stitch|worker|opencv|konva/i.test(l))).toEqual([]);
+});
+
+/**
+ * Phase 6, burned-in graphics (decision 17): images with the same scale bar burned in. The review
+ * screen says so; in the built mosaic the bar is gone where the neighbor covers the spot (its
+ * clean pixels are used, not a blend) and stays where nothing else covers it.
+ */
+test('Image Stitcher: a burned-in scale bar is kept out of the overlap', async ({ launch, runDir }) => {
+  test.setTimeout(5 * 60_000);
+  const tiles = cutTiles(makeScene(4200, 1900, 13), { cols: 2, rows: 1, tileWidth: TW, tileHeight: TH, overlap: 0.15, jitter: 0, vignette: 0, gain: 0, seed: 4, bar: true })
+    .map((t, k) => ({ ...t, id: `bar_${k + 1}` }));
+  const files = await writeTiles(path.join(runDir, 'bars'), tiles);
+  const out = path.join(runDir, 'bars.png');
+  // Where the right image starts in the left one (the cutter's true positions)
+  const dx = Math.round(tiles[1].truth[2] - tiles[0].truth[2]);
+  expect(dx).toBe(TW * 0.85);
+
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
+  const page = ana.page;
+  await ana.menu('Tools', 'Image Stitcher...');
+  const choose = page.getByRole('dialog', { name: 'Image Stitcher' });
+  await ana.answerDialog({ kind: 'open', filePaths: files });
+  await choose.getByRole('button', { name: 'Add Images...' }).click();
+  await expect(choose.getByTestId('stitch-row')).toHaveCount(2);
+  await choose.getByRole('button', { name: 'Fit Images Together' }).click();
+  const review = page.getByRole('dialog', { name: 'Review the mosaic' });
+  await expect(review).toBeVisible({ timeout: 120_000 });
+  await expect(review.getByTestId('stitch-placed')).toHaveText('Both images placed automatically');
+  await expect(review.getByTestId('stitch-graphics')).toContainText('2 images seem to have a scale bar or label burned in');
+  await expect(review.getByTestId('stitch-canvas')).toHaveAttribute('data-graphics', '2');
+  await expect(review.getByText('Scale bar or label', { exact: true })).toHaveCount(2);
+  await expect(review.getByTestId('stitch-magnification')).toHaveCount(0);
+
+  await review.getByRole('button', { name: 'Build' }).click();
+  const done = page.getByRole('dialog', { name: 'The mosaic is ready' });
+  await expect(done).toBeVisible({ timeout: 60_000 });
+  await ana.answerDialog({ kind: 'save', filePath: out });
+  await done.getByRole('button', { name: 'Save as an Image File...' }).click();
+  await expect(done.getByText(`Saved to ${out}`)).toBeVisible({ timeout: 60_000 });
+
+  const mean = async (file: string, left: number, top: number, width: number, height: number) => {
+    const data = await sharp(file).extract({ left, top, width, height }).greyscale().raw().toBuffer();
+    return data.reduce((sum, v) => sum + v, 0) / data.length;
+  };
+  // The bar's white stripe in the left image: x 1580..1900, y 1425..1440 (tests/stitchFixtures.mts).
+  // The left image sits at the mosaic's corner, so its pixels are the mosaic's.
+  const meta = await sharp(out).metadata();
+  expect(Math.abs((meta.width ?? 0) - (dx + TW))).toBeLessThan(6);
+  const covered = await mean(out, dx + 60, 1428, 120, 9);
+  const neighbor = await mean(files[1], 60, 1428, 120, 9);
+  // Under the neighbor: its rock, not the white stripe (a blend would be far brighter)
+  expect(Math.abs(covered - neighbor)).toBeLessThan(20);
+  expect(covered).toBeLessThan(215);
+  // Left of the overlap nothing else covers the bar: it stays
+  expect(await mean(out, 1600, 1428, 80, 9)).toBeGreaterThan(240);
+  // The right image's own bar, at the mosaic's edge, stays too
+  expect(await mean(out, dx + 1600, 1428, 80, 9)).toBeGreaterThan(240);
+  expect(ana.consoleErrors.filter((l) => /stitch|worker|opencv|konva/i.test(l))).toEqual([]);
+});
+
+/**
+ * Phase 6, another magnification (decision 4): one image shows the rock twice as magnified as
+ * the others. The review screen names it and offers to leave it out.
+ */
+test('Image Stitcher: an image at twice the magnification is named and can be left out', async ({ launch, runDir }) => {
+  test.setTimeout(5 * 60_000);
+  const scene = makeScene(4400, 3400, 17);
+  const tiles = cutTiles(scene, { cols: 2, rows: 2, tileWidth: TW, tileHeight: TH, overlap: 0.2, jitter: 0.02, seed: 71 }).map((t, k) => ({ ...t, id: `wide_${k + 1}` }));
+  const truth = truthOf(scene.width / 2 + 150, scene.height / 2 - 100, 0, 2, TW, TH);
+  const detail = { id: 'detail', image: cutTile(scene, truth, TW, TH, { vignette: 0.2, gain: 1, noise: 2, bar: false }, randomOf(72)) };
+  const files = await writeTiles(path.join(runDir, 'magnified'), [...tiles, detail]);
+
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
+  const page = ana.page;
+  await ana.menu('Tools', 'Image Stitcher...');
+  const choose = page.getByRole('dialog', { name: 'Image Stitcher' });
+  await ana.answerDialog({ kind: 'open', filePaths: files });
+  await choose.getByRole('button', { name: 'Add Images...' }).click();
+  await expect(choose.getByTestId('stitch-row')).toHaveCount(5);
+  await choose.getByRole('button', { name: 'Fit Images Together' }).click();
+  const review = page.getByRole('dialog', { name: 'Review the mosaic' });
+  await expect(review).toBeVisible({ timeout: 120_000 });
+  await expect(review.getByTestId('stitch-placed')).toHaveText('All 5 images placed automatically');
+  const notice = review.getByTestId('stitch-magnification');
+  await expect(notice).toHaveCount(1);
+  await expect(notice).toContainText('"detail.jpg" is about 2 times more magnified than the other images.');
+  await expect(notice).toContainText('Place automatically on parent');
+  await expect(review.getByTestId('stitch-graphics')).toHaveCount(0);
+
+  await notice.getByRole('button', { name: 'Leave Out' }).click();
+  await expect(review.getByText('Left out (1)')).toBeVisible();
+  await expect(review.getByText('Placed (4)')).toBeVisible();
+  await expect(notice).toHaveCount(0);
+  // One Undo brings it back, with the notice
+  await review.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(notice).toHaveCount(1);
   expect(ana.consoleErrors.filter((l) => /stitch|worker|opencv|konva/i.test(l))).toEqual([]);
 });

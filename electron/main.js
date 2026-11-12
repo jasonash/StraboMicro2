@@ -1927,6 +1927,15 @@ app.on('before-quit', () => {
   autoUpdaterModule.cleanup();
 });
 
+// A window's page or a helper process ended on its own: main.log says why (crashed, out of
+// memory, killed), which nothing else records
+app.on('render-process-gone', (event, webContents, details) => {
+  log.error(`[Main] A window's page ended: ${details.reason} (exit code ${details.exitCode})`);
+});
+app.on('child-process-gone', (event, details) => {
+  if (details.reason !== 'clean-exit') log.error(`[Main] A ${details.type} process ended: ${details.reason} (exit code ${details.exitCode})`);
+});
+
 app.on('window-all-closed', () => {
   // On macOS, quit if the user explicitly requested it (Cmd+Q)
   // Otherwise, the app stays running (standard macOS behavior)

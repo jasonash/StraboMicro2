@@ -83,6 +83,25 @@ export function overlapsText(count: number): string {
   return count === 1 ? '1 overlap found so far' : `${n(count)} overlaps found so far`;
 }
 
+/** The notice when images of the mosaic have a scale bar or label burned in (design decision 17) */
+export function graphicsText(count: number): string {
+  const which = count === 1 ? '1 image seems to have' : `${n(count)} images seem to have`;
+  return `${which} a scale bar or label burned in (dashed outline). It will appear in the mosaic, except where another image covers the same spot.`;
+}
+
+/**
+ * The notice for an image at another magnification than the rest (design decision 4).
+ * factor: how many times more magnified it is (below 1: less magnified).
+ */
+export function magnificationText(name: string, factor: number): string {
+  const times = (f: number) => (Math.abs(f - Math.round(f)) < 0.15 ? String(Math.round(f)) : f.toFixed(1));
+  if (factor >= 1) {
+    return `"${name}" is about ${times(factor)} times more magnified than the other images. In the mosaic its extra detail is lost. `
+      + 'You can leave it out and, once the mosaic is in the project, add it as an associated micrograph on the mosaic (Add Associated Micrograph, location method "Place automatically on parent").';
+  }
+  return `"${name}" is about ${times(1 / factor)} times less magnified than the other images. In the mosaic it will look blurred next to them. You can leave it out.`;
+}
+
 /** One line under an image that is not in the mosaic */
 export function groupText(count: number): string {
   return count === 1 ? 'Fits no other image' : `Group of ${n(count)} that fit each other`;

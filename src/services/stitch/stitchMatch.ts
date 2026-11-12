@@ -13,6 +13,7 @@ import type { AffineMatrix } from '@/utils/affineTransform';
 import {
   apply, findFeatures, fitAffine, fitSimilarity, freeFeatures, invert, matchFeatures, multiply, residual, toMat,
   type Features, type ImageSource, type OpenCV,
+  type Rect,
 } from '../autoPlace/placementMatch.ts';
 import { fitGroupToTarget, sizeAndTurn, thinPairs, type Overlap, type StitchGroup, type StitchLayout } from './stitchLayout.ts';
 
@@ -54,6 +55,8 @@ export interface TileFeatures {
   /** count * bytes */
   descriptors: Uint8Array;
   bytes: number;
+  /** Rectangles around burned-in graphics (a scale bar, a label), full-size pixels */
+  graphicRects: Rect[];
 }
 
 /** Features of one tile, read as a shrunken gray copy */
@@ -77,6 +80,12 @@ export async function tileFeatures(cv: OpenCV, source: ImageSource, level: Match
     graphic: f.graphic,
     descriptors: f.count > 0 ? new Uint8Array(f.descriptors.data) : new Uint8Array(0),
     bytes,
+    graphicRects: (f.graphicRects ?? []).map((r) => ({
+      x: r.x * (source.width / gray.width),
+      y: r.y * (source.height / gray.height),
+      width: r.width * (source.width / gray.width),
+      height: r.height * (source.height / gray.height),
+    })),
   };
   freeFeatures(f);
   return out;
@@ -87,6 +96,16 @@ export function hasGraphics(f: TileFeatures): boolean {
   let n = 0;
   for (let i = 0; i < f.count; i++) n += f.graphic[i];
   return n >= 20;
+}
+
+/**
+ * Where a tile's burned-in graphics are, for the mosaic builder (it uses another tile's pixels
+ * there when one covers the spot): the rectangles around them, when the tile has graphics worth
+ * telling about. Empty for a tile without, and for a line drawing (it is graphics all over).
+ */
+export function graphicAreas(f: TileFeatures): Rect[] {
+  if (!hasGraphics(f) || graphicShare(f) > 0.5) return [];
+  return f.graphicRects;
 }
 
 function graphicShare(f: TileFeatures): number {

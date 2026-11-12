@@ -38,6 +38,8 @@ interface StitchReviewCanvasProps {
   onSelect: (tile: number | null) => void;
   /** The part that will be saved when cropping is on (saved mosaic pixels) */
   crop: { left: number; top: number; width: number; height: number } | null;
+  /** Per tile: rectangles around burned-in graphics (a scale bar, a label), full-size pixels; drawn dashed */
+  graphicAreas?: Array<Array<{ x: number; y: number; width: number; height: number }> | undefined>;
   /** Per tile shown: placed by hand, held weakly, or fine (outline colors) */
   statuses?: Record<number, TileStatus>;
   /** The tiles that move with the selected tile (itself among them) */
@@ -78,7 +80,7 @@ const cornersOf = (m: AffineMatrix, width: number, height: number): number[] =>
   [[0, 0], [width, 0], [width, height], [0, height]].flatMap(([x, y]) => [m[0] * x + m[1] * y + m[2], m[3] * x + m[4] * y + m[5]]);
 
 export const StitchReviewCanvas: React.FC<StitchReviewCanvasProps> = ({
-  session, images, frame, selected, onSelect, crop, statuses = {}, piece, busy = false, onMove, onDropGroup, viewCenterRef,
+  session, images, frame, selected, onSelect, crop, graphicAreas, statuses = {}, piece, busy = false, onMove, onDropGroup, viewCenterRef,
 }) => {
   const [containerRef, size, isMeasured] = useElementSize<HTMLDivElement>({ width: 600, height: 400 });
   const [pictures, setPictures] = useState<Record<number, HTMLImageElement>>({});
@@ -345,17 +347,31 @@ export const StitchReviewCanvas: React.FC<StitchReviewCanvasProps> = ({
     const image = images[tile];
     if (!m || !image || (!showOutlines && !isSelected)) return null;
     return (
-      <Line
-        key={tile}
-        points={cornersOf(m, image.width, image.height)}
-        closed
-        listening={false}
-        stroke={isSelected ? OUTLINE_SELECTED : OUTLINE[statuses[tile] ?? 'good']}
-        strokeWidth={isSelected ? 3 : statuses[tile] && statuses[tile] !== 'good' ? 2.5 : 1.5}
-        strokeScaleEnabled={false}
-        shadowColor="#000000"
-        shadowBlur={isSelected ? 2 : 0}
-      />
+      <React.Fragment key={tile}>
+        <Line
+          points={cornersOf(m, image.width, image.height)}
+          closed
+          listening={false}
+          stroke={isSelected ? OUTLINE_SELECTED : OUTLINE[statuses[tile] ?? 'good']}
+          strokeWidth={isSelected ? 3 : statuses[tile] && statuses[tile] !== 'good' ? 2.5 : 1.5}
+          strokeScaleEnabled={false}
+          shadowColor="#000000"
+          shadowBlur={isSelected ? 2 : 0}
+        />
+        {showOutlines && (graphicAreas?.[tile] ?? []).map((area, k) => (
+          <Line
+            key={k}
+            points={[[area.x, area.y], [area.x + area.width, area.y], [area.x + area.width, area.y + area.height], [area.x, area.y + area.height]]
+              .flatMap(([x, y]) => [m[0] * x + m[1] * y + m[2], m[3] * x + m[4] * y + m[5]])}
+            closed
+            listening={false}
+            stroke="#ffee58"
+            strokeWidth={1.5}
+            dash={[6, 4]}
+            strokeScaleEnabled={false}
+          />
+        ))}
+      </React.Fragment>
     );
   };
 
@@ -368,6 +384,7 @@ export const StitchReviewCanvas: React.FC<StitchReviewCanvasProps> = ({
         data-sharp={Object.keys(sharp).length}
         data-selected-at={selectedAt}
         data-zoom={view.zoom}
+        data-graphics={frame && graphicAreas ? tiles.reduce((sum, t) => sum + (graphicAreas[t]?.length ?? 0), 0) : 0}
         tabIndex={0}
         onKeyDown={handleKeyDown}
         onDragOver={(event) => {
