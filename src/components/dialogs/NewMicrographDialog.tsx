@@ -70,6 +70,8 @@ import {
 import { findMicrographById } from '@/store/helpers';
 import { describeImageLoadError } from '@/utils/imageLoadError';
 import type { StitchedMosaic } from '@/services/stitch/stitchApp';
+import { originalPlacement, orientedSize, type MosaicOriginal } from '@/services/stitch/keptOriginals';
+import type { RectanglePlacement } from '@/services/autoPlace/placementFields';
 import { ImageStitcherDialog } from './ImageStitcherDialog';
 import { DiscardMosaicDialog } from './DiscardMosaicDialog';
 import {
@@ -723,6 +725,8 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
   const [mosaic, setMosaic] = useState<StitchedMosaic | null>(null);
   const [showStitcher, setShowStitcher] = useState(false);
   const [confirmDiscardMosaic, setConfirmDiscardMosaic] = useState(false);
+  /** While Finish adds the mosaic's original images: how many are ready */
+  const [originalsProgress, setOriginalsProgress] = useState<{ done: number; total: number } | null>(null);
 
   const discardMosaicFile = (which: StitchedMosaic | null) => {
     if (!which) return;
@@ -1089,6 +1093,7 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
     // user discarded it)
     discardMosaicFile(mosaic);
     setMosaic(null);
+    setOriginalsProgress(null);
     setConfirmDiscardMosaic(false);
     setShowStitcher(false);
 
@@ -1551,6 +1556,46 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
         );
       }
 
+      // A mosaic whose original images are kept (image stitcher, decisions 26 to 31): each
+      // original's image is made ready first (converted like any import, turned and mirrored like
+      // the mosaic was, moved into the project), so that the mosaic and its originals can then
+      // be added to the project together, as one undo step.
+      const keptOriginals: Array<{ id: string; original: MosaicOriginal; width: number; height: number; placement: RectanglePlacement }> = [];
+      const failedOriginals: string[] = [];
+      if (mosaic?.originals && window.api) {
+        const mosaicImported = orientedSize(appliedOrientation, formData.micrographWidth, formData.micrographHeight);
+        const total = mosaic.originals.length;
+        for (let k = 0; k < total; k++) {
+          const original = mosaic.originals[k];
+          setOriginalsProgress({ done: k, total });
+          try {
+            const converted = await window.api.convertToScratchJPEG(original.path);
+            const imported = { width: converted.jpegWidth, height: converted.jpegHeight };
+            if (!isIdentityOrientation(appliedOrientation)) {
+              await window.api.rotateImage(converted.scratchPath, appliedOrientation.rotation, appliedOrientation.flip);
+            }
+            const id = crypto.randomUUID();
+            await window.api.moveFromScratch(converted.identifier, projectId, id);
+            keptOriginals.push({
+              id,
+              original,
+              ...orientedSize(appliedOrientation, imported.width, imported.height),
+              placement: originalPlacement({
+                original,
+                mosaicBuilt: { width: mosaic.width, height: mosaic.height },
+                mosaicImported,
+                originalImported: imported,
+                orientation: appliedOrientation,
+              }),
+            });
+          } catch (error) {
+            console.error('[NewMicrographDialog] Could not add the original image', original.path, error);
+            failedOriginals.push(original.name);
+          }
+        }
+        setOriginalsProgress({ done: total, total });
+      }
+
       // Create micrograph object
       const micrograph = {
         id: micrographId,
@@ -1666,6 +1711,36 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
       }
 
       console.log('Micrograph created successfully:', micrograph.id);
+
+      // The mosaic's original images: associated micrographs of it, placed from the stitch
+      // layout, hidden for this person at first (the eye icon; decision 26). Added right after
+      // the mosaic, with nothing awaited in between, so one Undo removes them all with it.
+      for (const kept of keptOriginals) {
+        const fileName = kept.original.path.split(/[\\/]/).pop() || kept.original.name;
+        const child: MicrographMetadata = {
+          id: kept.id,
+          name: kept.original.name,
+          imageFilename: fileName,
+          imagePath: kept.id,
+          imageWidth: kept.width,
+          imageHeight: kept.height,
+          width: kept.width,
+          height: kept.height,
+          opacity: 1,
+          imageType: micrograph.imageType,
+          polish: micrograph.polish,
+          polishDescription: micrograph.polishDescription,
+          orientationInfo: { orientationMethod: 'unoriented' as const },
+          scalePixelsPerCentimeter: micrograph.scalePixelsPerCentimeter / kept.placement.scale,
+          parentID: micrograph.id,
+          offsetInParent: { X: kept.placement.offsetX, Y: kept.placement.offsetY },
+          rotation: kept.placement.rotation,
+          instrument: micrograph.instrument,
+          isMicroVisible: false,
+          isFlipped: false,
+        };
+        if (!useAppStore.getState().addMicrograph(targetSampleId, child)) failedOriginals.push(kept.original.name);
+      }
 
       // If there's a corresponding XPL image, create it as an associated micrograph
       let xplMicrograph: typeof micrograph | null = null;
@@ -1820,6 +1895,24 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               console.error('[NewMicrographDialog] Failed to generate XPL thumbnail:', error);
             });
         }
+      }
+
+      // Thumbnails of the mosaic's original images, one after the other (they are large)
+      if (projectForThumbnails && window.api && keptOriginals.length > 0) {
+        const api = window.api;
+        void (async () => {
+          for (const kept of keptOriginals) {
+            try {
+              await api.generateCompositeThumbnail(projectForThumbnails.id, kept.id, projectForThumbnails);
+              window.dispatchEvent(new CustomEvent('thumbnail-generated', { detail: { micrographId: kept.id } }));
+            } catch (error) {
+              console.error('[NewMicrographDialog] Failed to generate the thumbnail of an original image:', error);
+            }
+          }
+        })();
+      }
+      if (failedOriginals.length > 0) {
+        alert(`The mosaic was added, but ${failedOriginals.length === 1 ? 'one original image' : `${failedOriginals.length} original images`} could not be added: ${failedOriginals.join(', ')}`);
       }
 
       // Close dialog immediately (don't block on thumbnail generation)
@@ -3503,7 +3596,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
               <Typography variant="body2" sx={{ color: 'text.secondary', flex: 1 }}>
                 {mosaic
-                  ? 'This image is a mosaic made in the Image Stitcher.'
+                  ? (mosaic.originals
+                    ? `This image is a mosaic made in the Image Stitcher. Its ${mosaic.originals.length} original images will be added as associated micrographs of it, hidden at first.`
+                    : 'This image is a mosaic made in the Image Stitcher.')
                   : 'Several overlapping images of one area? Stitch them into one mosaic first.'}
               </Typography>
               <Button
@@ -5658,7 +5753,11 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
               onClick={handleFinish}
               disabled={!canProceed() || isCreating}
             >
-              {isCreating ? 'Creating…' : 'Finish'}
+              {isCreating
+                ? (originalsProgress && originalsProgress.done < originalsProgress.total
+                  ? `Adding original images (${originalsProgress.done + 1} of ${originalsProgress.total})…`
+                  : 'Creating…')
+                : 'Finish'}
             </Button>
           )}
         </DialogActions>

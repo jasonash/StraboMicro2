@@ -97,7 +97,8 @@ export function magnificationText(name: string, factor: number): string {
   const times = (f: number) => (Math.abs(f - Math.round(f)) < 0.15 ? String(Math.round(f)) : f.toFixed(1));
   if (factor >= 1) {
     return `"${name}" is about ${times(factor)} times more magnified than the other images. In the mosaic its extra detail is lost. `
-      + 'You can leave it out and, once the mosaic is in the project, add it as an associated micrograph on the mosaic (Add Associated Micrograph, location method "Place automatically on parent").';
+      + 'You can leave it out. If you then choose to add the original images on the last step, it is added with them, as an associated micrograph at its place on the mosaic. '
+      + 'Otherwise you can add it yourself once the mosaic is in the project (Add Associated Micrograph, location method "Place automatically on parent").';
   }
   return `"${name}" is about ${times(1 / factor)} times less magnified than the other images. In the mosaic it will look blurred next to them. You can leave it out.`;
 }

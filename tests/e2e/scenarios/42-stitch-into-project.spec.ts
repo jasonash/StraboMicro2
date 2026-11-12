@@ -22,6 +22,7 @@ import { makeProject } from '../lib/fixtures';
 import { openSmz } from '../lib/actions';
 import { cutTiles, makeScene } from '../../stitchFixtures.mts';
 import { writeTiles } from '../lib/stitchTiles';
+import { rectanglePoint } from '../../../src/services/autoPlace/placementFields.ts';
 
 const TW = 1400;
 const TH = 1050;
@@ -180,4 +181,113 @@ test('New Associated Micrograph > Stitch Images...: the mosaic is the image; Can
   expect(fs.existsSync(out)).toBe(true);
   expect(await ana.unansweredDialogs()).toEqual([]);
   expect(ana.consoleErrors.filter((l) => /stitch|worker|opencv|konva|mosaic/i.test(l))).toEqual([]);
+});
+
+/**
+ * Phase 7, keep the originals (decisions 26 to 31): with "Also add the original images as
+ * associated micrographs of the mosaic" checked, Finish adds the mosaic and its originals. The
+ * originals are placed where they lie on the mosaic (also after the mosaic was turned and
+ * mirrored in the Image Rotation step, and after the import enlarged the narrow originals),
+ * hidden for this person, with their scale from the mosaic's; one Undo removes them all.
+ */
+test('Keep the originals: placed on the turned and mirrored mosaic, hidden, one Undo', async ({ launch, runDir }) => {
+  test.setTimeout(6 * 60_000);
+  const files = await tileFiles(`${runDir}/tiles`);
+  const p = await makeProject(`${runDir}/fixtures`, 'E2E Stitch Keep Originals', []);
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
+  await openSmz(ana, p.smzPath, p.id);
+  const page = ana.page;
+
+  await ana.menu('Tools', 'Image Stitcher...');
+  const done = await stitch(ana, files, '1000');
+  const keep = done.getByLabel('Also add the 4 original images as associated micrographs of the mosaic');
+  await expect(keep).not.toBeChecked();
+  // Not offered for a file
+  await done.getByRole('radio', { name: 'Save as an image file' }).check();
+  await expect(keep).toHaveCount(0);
+  await done.getByRole('radio', { name: 'Add to the project as a new reference micrograph' }).check();
+  await keep.check();
+  await done.getByRole('button', { name: 'Continue' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'New Reference Micrograph' });
+  await expect(dialog.getByLabel(/^Micrograph File/)).toHaveValue('TS-12 mosaic.tif', { timeout: 60_000 });
+  await expect(dialog.getByText('Its 4 original images will be added as associated micrographs of it, hidden at first.')).toBeVisible();
+  const next = dialog.getByRole('button', { name: 'Next' });
+  const pick = async (combo: string, option: string) => {
+    await dialog.getByRole('combobox', { name: new RegExp(`^${combo}`) }).click();
+    await page.getByRole('option', { name: option, exact: true }).click();
+  };
+  await next.click(); // Load Reference Micrograph
+  await ana.caption('turns the mosaic a quarter clockwise and mirrors it');
+  await dialog.getByLabel('Rotate 90° clockwise').getByRole('button').click();
+  await dialog.getByLabel('Flip (mirror) the image left-right').check();
+  await next.click(); // Image Rotation
+  await pick('Instrument Type', 'Optical Microscopy');
+  await pick('Image Type', 'Plane Polarized Light');
+  await next.click(); // Instrument & Image Information
+  await next.click(); // Instrument Data
+  await next.click(); // Micrograph Metadata
+  await next.click(); // Micrograph Orientation
+  await next.click(); // Set Micrograph Scale (filled in from the stitcher)
+  await dialog.getByRole('button', { name: 'Finish' }).click();
+  await expect(dialog).toBeHidden({ timeout: 120_000 });
+
+  type Row = { id: string; name: string; parentID: string | null; imageWidth: number; imageHeight: number; scale: number | null; visible: boolean | null;
+    offset: { X: number; Y: number } | null; rotation: number | null; imageType: string | null; instrumentType: string | null };
+  const rows = () => ana.state((e) => {
+    const out: Row[] = [];
+    for (const d of e.app.getState().project?.datasets ?? []) for (const s of d.samples ?? []) for (const m of s.micrographs ?? []) {
+      out.push({ id: m.id, name: m.name ?? '', parentID: m.parentID ?? null, imageWidth: m.imageWidth ?? 0, imageHeight: m.imageHeight ?? 0,
+        scale: m.scalePixelsPerCentimeter ?? null, visible: m.isMicroVisible ?? null, offset: m.offsetInParent ? { X: m.offsetInParent.X ?? 0, Y: m.offsetInParent.Y ?? 0 } : null, rotation: m.rotation ?? null,
+        imageType: m.imageType ?? null, instrumentType: m.instrument?.instrumentType ?? null });
+    }
+    return out;
+  }) as Promise<Row[]>;
+  await expect.poll(async () => (await rows()).length, { timeout: 30_000 }).toBe(6);
+  const all = await rows();
+  const mosaic = all.find((m) => m.name === 'TS-12 mosaic')!;
+  const originals = all.filter((m) => m.parentID === mosaic.id);
+  expect(originals.map((m) => m.name).sort()).toEqual(['TS-12_001', 'TS-12_002', 'TS-12_003', 'TS-12_004']);
+  // Turned a quarter: the mosaic is taller than wide, and so are the originals (2000 wide after the import, then turned)
+  expect(mosaic.imageHeight).toBeGreaterThan(mosaic.imageWidth);
+  for (const o of originals) {
+    expect([o.imageWidth, o.imageHeight]).toEqual([1500, 2000]);
+    expect(o.visible).toBe(false);
+    expect([o.imageType, o.instrumentType]).toEqual(['Plane Polarized Light', 'Optical Microscopy']);
+    // 1400 px originals enlarged to 2000 by the import: 0.7 mosaic pixels per original pixel
+    expect(Math.abs((o.scale ?? 0) - (mosaic.scale ?? 0) / 0.7) / (mosaic.scale ?? 1)).toBeLessThan(0.02);
+    expect(Math.abs(o.rotation ?? 99)).toBeLessThan(1);
+  }
+  expect(mosaic.visible).not.toBe(false);
+
+  await ana.caption('each original shows the same rock as the mosaic beneath it');
+  const folders = await page.evaluate((id) => window.api!.getProjectFolderPaths(id), p.id);
+  const gray = async (id: string) => sharp(`${folders!.images}/${id}`).greyscale().raw().toBuffer({ resolveWithObject: true });
+  const parent = await gray(mosaic.id);
+  for (const o of originals) {
+    const child = await gray(o.id);
+    expect([child.info.width, child.info.height]).toEqual([o.imageWidth, o.imageHeight]);
+    const placement = { offsetX: o.offset!.X, offsetY: o.offset!.Y, rotation: o.rotation!, scale: (mosaic.scale ?? 1) / (o.scale ?? 1) };
+    let sum = 0;
+    let count = 0;
+    for (let v = 150; v < o.imageHeight - 150; v += 97) {
+      for (let u = 150; u < o.imageWidth - 150; u += 89) {
+        const [x, y] = rectanglePoint(placement, o.imageWidth, o.imageHeight, u, v);
+        const px = Math.round(x);
+        const py = Math.round(y);
+        if (px < 0 || py < 0 || px >= parent.info.width || py >= parent.info.height) continue;
+        sum += Math.abs(child.data[v * child.info.width + u] - parent.data[py * parent.info.width + px]);
+        count++;
+      }
+    }
+    // The same rock: a few gray levels apart (resampling, blending). The wrong place, turn or mirror gives 50 or more.
+    expect(count).toBeGreaterThan(150);
+    expect(sum / count).toBeLessThan(22);
+  }
+
+  await ana.caption('one Undo removes the mosaic and its originals');
+  await page.waitForTimeout(600);
+  await ana.menu('Edit', 'Undo');
+  await expect.poll(async () => (await rows()).map((m) => m.name)).toEqual(['Overview']);
+  expect(ana.consoleErrors.filter((l) => /stitch|worker|opencv|konva|mosaic|original/i.test(l))).toEqual([]);
 });

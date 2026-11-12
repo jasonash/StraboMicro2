@@ -9,6 +9,7 @@
 
 import type { GrayImage } from '../autoPlace/placementMatch';
 import { mosaicFrame, type MosaicFrame, type StitchGroup, type StitchLayout } from './stitchLayout';
+import type { MosaicOriginal } from './keptOriginals';
 import { startStitch, workerCount, type PoolOptions, type StitchRun, type StitchWorkerLike } from './stitchPool';
 import type { FromStitchWorker } from './stitchJobs';
 
@@ -189,6 +190,13 @@ export interface StitchedMosaic {
   name: string;
   /** Scale of the mosaic as imported, when the scale of the original images was given */
   scale?: { pixelsPerUnit: number; unit: string };
+  /** Size of the file in pixels (the mosaic as built) */
+  width: number;
+  height: number;
+  /** Width the import gives the mosaic / width as built (the import enlarges narrow images) */
+  importFactor: number;
+  /** The original images to add as associated micrographs of the mosaic, when the user chose to keep them (decision 28) */
+  originals?: MosaicOriginal[];
 }
 
 /**
@@ -196,15 +204,24 @@ export interface StitchedMosaic {
  * mosaicScale: pixels per unit of the built mosaic; converted here for the size the import
  * makes of it. After this the session has no mosaic any more.
  */
-export async function handOverMosaic(session: string, name: string, mosaicScale?: { pixelsPerUnit: number; unit: string } | null): Promise<StitchedMosaic> {
+export async function handOverMosaic(
+  session: string,
+  name: string,
+  mosaicScale?: { pixelsPerUnit: number; unit: string } | null,
+  originals?: MosaicOriginal[],
+): Promise<StitchedMosaic> {
   const r = await api().stitch.handOver(session, name);
-  if (!r.success || !r.path || !r.fileName) throw new Error(r.error ?? 'The mosaic could not be handed over');
+  if (!r.success || !r.path || !r.fileName || !r.width || !r.height) throw new Error(r.error ?? 'The mosaic could not be handed over');
   const factor = r.importFactor ?? 1;
   return {
     path: r.path,
     fileName: r.fileName,
     name,
+    width: r.width,
+    height: r.height,
+    importFactor: factor,
     ...(mosaicScale ? { scale: { pixelsPerUnit: mosaicScale.pixelsPerUnit * factor, unit: mosaicScale.unit } } : {}),
+    ...(originals && originals.length > 0 ? { originals } : {}),
   };
 }
 

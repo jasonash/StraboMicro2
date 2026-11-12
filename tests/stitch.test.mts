@@ -33,6 +33,9 @@ import {
 import { hasGraphics, matchPair, sharedGraphics, snapGroup, tileFeatures, type TileFeatures } from '../src/services/stitch/stitchMatch.ts';
 import { hardPairs, quickPairs, stitchTiles, unplacedTiles, type StitchProgress } from '../src/services/stitch/stitch.ts';
 import { mosaicName } from '../src/utils/mosaicName.ts';
+import { orientationMatrix, orientedSize, originalPlacement, originalsOf } from '../src/services/stitch/keptOriginals.ts';
+import { rectanglePoint } from '../src/services/autoPlace/placementFields.ts';
+import type { Orientation } from '../src/utils/rotationUtils.ts';
 import { durationText, estimateText, graphicsText, groupText, magnificationText, overlapsText, placedText, progressLines, sizeText, skippedText, tooManyText } from '../src/utils/stitchText.ts';
 import { accuracy, cutTile, cutTiles, makeScene, randomOf, truthOf, type Accuracy, type CutTile } from './stitchFixtures.mts';
 
@@ -361,6 +364,77 @@ if (wanted('math')) {
   const layoutLines = progressLines({ stage: 'layout', done: 0, total: 1 });
   check('progressLines: the layout has no count', layoutLines[2].state === 'now' && layoutLines[2].count === '' && layoutLines[2].percent === null && layoutLines.length === 3, layoutLines);
   check('progressLines: reading', progressLines({ stage: 'reading', done: 3, total: 48 })[0].count === '3 of 48' && progressLines({ stage: 'features', done: 40, total: 48 })[0].state === 'now');
+}
+
+// ---------------------------------------------------------------- 1c. kept originals (keptOriginals.ts)
+
+if (wanted('math') || wanted('originals')) {
+  console.log('1c. where a kept original lies on the mosaic');
+  const orientations: Orientation[] = [0, 90, 180, 270].flatMap((rotation) => [false, true].map((flip) => ({ rotation: rotation as 0 | 90 | 180 | 270, flip })));
+  // Turning an image: every corner stays a corner, and the first corner goes where a clockwise turn puts it
+  const W = 400;
+  const H = 300;
+  check('orientationMatrix: corners go to corners of the turned size', orientations.every((o) => {
+    const size = orientedSize(o, W, H);
+    const m = orientationMatrix(o, W, H);
+    return [[0, 0], [W, 0], [W, H], [0, H]].every(([x, y]) => {
+      const [u, v] = apply(m, x, y);
+      return (Math.abs(u) < 1e-9 || Math.abs(u - size.width) < 1e-9) && (Math.abs(v) < 1e-9 || Math.abs(v - size.height) < 1e-9);
+    });
+  }));
+  const at = (o: Orientation, x: number, y: number) => apply(orientationMatrix(o, W, H), x, y).map((v) => Math.round(v)).join();
+  check('orientationMatrix: 90 clockwise puts the top left corner top right', at({ rotation: 90, flip: false }, 0, 0) === `${H},0` && at({ rotation: 90, flip: false }, W, 0) === `${H},${W}`);
+  check('orientationMatrix: 270 puts the top left corner bottom left', at({ rotation: 270, flip: false }, 0, 0) === `0,${W}`);
+  check('orientationMatrix: 180, and a mirror alone', at({ rotation: 180, flip: false }, 0, 0) === `${W},${H}` && at({ rotation: 0, flip: true }, 0, 0) === `${W},0` && at({ rotation: 0, flip: true }, 10, 20) === `${W - 10},20`);
+  check('orientationMatrix: turn first, then mirror', at({ rotation: 90, flip: true }, 0, 0) === '0,0' && at({ rotation: 90, flip: true }, W, 0) === `0,${W}`);
+  check('orientedSize', orientedSize({ rotation: 90, flip: true }, W, H).width === H && orientedSize({ rotation: 180, flip: false }, W, H).width === W);
+
+  // An original of 4000 x 3000 lying turned by 3 degrees in a mosaic built at 9000 x 6000 (54% of
+  // full size); the import shrinks nothing here, then enlarges a small mosaic in a second case
+  const original = { width: 4000, height: 3000, toMosaic: turn(3, 0.54, 2500, 1200) };
+  const cases = [
+    { name: 'as built', mosaicBuilt: { width: 9000, height: 6000 }, mosaicImported: { width: 9000, height: 6000 }, originalImported: { width: 4000, height: 3000 } },
+    { name: 'mosaic enlarged by the import, original shrunk', mosaicBuilt: { width: 1500, height: 1000 }, mosaicImported: { width: 2000, height: 1333 }, originalImported: { width: 2000, height: 1500 } },
+  ];
+  for (const c of cases) {
+    const worst = Math.max(...orientations.map((o) => {
+      const placement = originalPlacement({ original, ...c, orientation: o });
+      const size = orientedSize(o, c.originalImported.width, c.originalImported.height);
+      // A point of the original file, followed both ways: through the stored placement, and by hand
+      return Math.max(...[[0, 0], [4000, 0], [1234, 2345], [4000, 3000]].map(([x, y]) => {
+        const inImported: [number, number] = [(x * c.originalImported.width) / 4000, (y * c.originalImported.height) / 3000];
+        const turned = apply(orientationMatrix(o, c.originalImported.width, c.originalImported.height), inImported[0], inImported[1]);
+        const stored = rectanglePoint(placement, size.width, size.height, turned[0], turned[1]);
+        const onBuilt = apply(original.toMosaic, x, y);
+        const onImported: [number, number] = [(onBuilt[0] * c.mosaicImported.width) / c.mosaicBuilt.width, (onBuilt[1] * c.mosaicImported.height) / c.mosaicBuilt.height];
+        const expected = apply(orientationMatrix(o, c.mosaicImported.width, c.mosaicImported.height), onImported[0], onImported[1]);
+        return Math.hypot(stored[0] - expected[0], stored[1] - expected[1]);
+      }));
+    }));
+    // The second case resizes the two sides by slightly different shares (1333 / 1000 is not 2000 / 1500): a pixel or so
+    check(`originalPlacement, ${c.name}: every point lands where the mosaic shows it, in all eight orientations`, worst < (c.name === 'as built' ? 1e-6 : 1.5), worst);
+  }
+  {
+    // Which originals, and where: three tiles in a row, the third left out; the frame is of the first two
+    const group = { tiles: [0, 1, 2], placements: { 0: turn(0, 1, 0, 0), 1: turn(0, 1, 850, 0), 2: turn(0, 0.5, 400, 100) } };
+    const three: StitchLayout = { tiles: [0, 1, 2].map((k) => ({ id: `/set/img_${k}.tif`, width: 1000, height: 800 })), overlaps: [], groups: [group], dropped: [] };
+    const frame = mosaicFrame(three, group, 925, new Set([2]))!;
+    const files = three.tiles.map((t) => ({ path: t.id, width: t.width, height: t.height }));
+    const kept = originalsOf(files, group, frame, null);
+    check('originalsOf: the images in the mosaic, named after their files, at their place', kept.length === 2 && kept[0].name === 'img_0' && kept[1].path === '/set/img_1.tif'
+      && far(kept[1].toMosaic, frame.toMosaic[1], 1000, 800) < 1e-9 && Math.abs(kept[1].toMosaic[2] - 425) < 1e-6, kept);
+    const withOdd = originalsOf(files, group, frame, { left: 100, top: 50 }, [2]);
+    // The mosaic is at half size: tile 2 (half as large again, at 400,100 of the frame) lands at 200,50, minus the crop
+    check('originalsOf: an image left out for its magnification is kept at its place; a crop moves every place', withOdd.length === 3
+      && Math.abs(withOdd[2].toMosaic[0] - 0.25) < 1e-9 && Math.abs(withOdd[2].toMosaic[2] - 100) < 1e-6 && Math.abs(withOdd[2].toMosaic[5] - 0) < 1e-6
+      && Math.abs(withOdd[1].toMosaic[2] - 325) < 1e-6, withOdd.map((o) => o.toMosaic));
+  }
+  {
+    const p = originalPlacement({ original, ...cases[0], orientation: { rotation: 0, flip: false } });
+    check('originalPlacement: scale and turn as stored (parent pixels per child pixel, degrees clockwise)', Math.abs(p.scale - 0.54) < 1e-9 && Math.abs(p.rotation - 3) < 1e-9, p);
+    const q = originalPlacement({ original, ...cases[0], orientation: { rotation: 90, flip: true } });
+    check('originalPlacement: mirrored with the mosaic, the turn is the other way round', Math.abs(q.scale - 0.54) < 1e-9 && Math.abs(q.rotation + 3) < 1e-9, q);
+  }
 }
 
 // ---------------------------------------------------------------- 1b. changes by hand (stitchEdit.ts)

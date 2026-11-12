@@ -54,7 +54,7 @@ import {
   type ProgressStage,
 } from '@/utils/stitchText';
 import type { AffineMatrix } from '@/utils/affineTransform';
-import { coveredRectangle, groupOfTile, hasEmptyAreas, otherMagnifications, type Overlap, type StitchGroup, type StitchLayout } from '@/services/stitch/stitchLayout';
+import { coveredRectangle, groupOfTile, hasEmptyAreas, otherMagnifications, type MosaicFrame, type Overlap, type StitchGroup, type StitchLayout } from '@/services/stitch/stitchLayout';
 import {
   change, deltaInGroup, dropPlacement, leaveOut, mainGroup, moveInMosaic, otherGroups as groupsNotPlaced, pieceOf, placeOnMosaic, putBack, redo,
   resetTile, separateGroup, snapSides, startEdit, startHistory, tileStatuses, undo, type EditHistory, type StitchEdit,
@@ -65,6 +65,7 @@ import {
   buildGroup, fitImagesTogether, frameOf, handOverMosaic, newSession, prepareImages,
   type MosaicTarget, type PreparedImage, type StitchedMosaic,
 } from '@/services/stitch/stitchApp';
+import { originalsOf } from '@/services/stitch/keptOriginals';
 import { useAppStore } from '@/store';
 import { useCanCreate } from '@/hooks/usePermissions';
 import { STITCH_DRAG_TYPE, StitchReviewCanvas } from './StitchReviewCanvas';
@@ -133,7 +134,10 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
   const [fill, setFill] = useState<'black' | 'white'>('black');
   const [cropOn, setCropOn] = useState(false);
   const [buildRows, setBuildRows] = useState({ done: 0, total: 0 });
-  const [built, setBuilt] = useState<{ width: number; height: number; scale: number } | null>(null);
+  /** The mosaic as built: its size, and the frame and crop it was built from (the originals' places follow from them) */
+  const [built, setBuilt] = useState<{ width: number; height: number; scale: number; frame: MosaicFrame; crop: { left: number; top: number } | null } | null>(null);
+  /** Also add the original images as associated micrographs of the mosaic (decision 28: off unless chosen) */
+  const [keepOriginals, setKeepOriginals] = useState(false);
   const [savedTo, setSavedTo] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -185,6 +189,7 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
     setFill('black');
     setCropOn(false);
     setBuilt(null);
+    setKeepOriginals(false);
     setSavedTo(null);
     setConfirmDiscard(false);
     setHanding(false);
@@ -443,7 +448,7 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
     ).catch((error: unknown) => ({ success: false, cancelled: false, error: error instanceof Error ? error.message : String(error), width: undefined, height: undefined }));
     if (life.current !== mine) return;
     if (result.success && result.width && result.height) {
-      setBuilt({ width: result.width, height: result.height, scale: frame.scale });
+      setBuilt({ width: result.width, height: result.height, scale: frame.scale, frame, crop: crop ? { left: crop.left, top: crop.top } : null });
       setSavedTo(null);
       // Where it goes by default: the sample or micrograph the user is working in
       const state = useAppStore.getState();
@@ -476,6 +481,14 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
   const scaleNumber = Number(scaleValue);
   const mosaicScale = built && scaleValue.trim() !== '' && Number.isFinite(scaleNumber) && scaleNumber > 0 ? scaleNumber * built.scale : null;
 
+  /** Images left out of the mosaic that are at another magnification: kept with the originals, at their place (decision 29) */
+  const leftOutForMagnification = useMemo(() => {
+    if (!main || main.tiles.length < 3) return [];
+    return otherMagnifications(main).map((o) => o.tile).filter((t) => leftOut.has(t));
+  }, [main, leftOut]);
+  const originalsCount = included.length + leftOutForMagnification.length;
+  const offersOriginals = purpose === 'pick' || (offersProject && destination !== 'file');
+
   /** The mosaic leaves the stitcher: to the dialog that asked, or to New Micrograph for the chosen place */
   const handleHandOver = async () => {
     const target: MosaicTarget | null = purpose === 'pick' ? null
@@ -491,6 +504,7 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
         session,
         mosaicName(included.map((t) => fitted[t].path)),
         mosaicScale !== null ? { pixelsPerUnit: mosaicScale, unit: scaleUnit } : null,
+        keepOriginals && built && main ? originalsOf(fitted, main, built.frame, built.crop, leftOutForMagnification) : undefined,
       );
       if (life.current !== mine) {
         void window.api?.stitch.discardHanded(mosaic.path);
@@ -850,6 +864,17 @@ export const ImageStitcherDialog: React.FC<ImageStitcherDialogProps> = ({ open, 
                   )}
                   <FormControlLabel value="file" control={<Radio size="small" />} disabled={handing} label="Save as an image file" />
                 </RadioGroup>
+              )}
+              {offersOriginals && (
+                <Box>
+                  <FormControlLabel
+                    control={<Checkbox size="small" checked={keepOriginals} disabled={handing} onChange={(event) => setKeepOriginals(event.target.checked)} />}
+                    label={`Also add the ${originalsCount.toLocaleString('en-US')} original images as associated micrographs of the mosaic`}
+                  />
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 3.5 }}>
+                    They keep their full detail and are placed where they belong on the mosaic. They start hidden, so you see the mosaic itself; show one with the eye icon beside it in the tree, or all with Show All Associated Micrographs in the mosaic's menu.
+                  </Typography>
+                </Box>
               )}
               {savedTo && <Alert severity="success">Saved to {savedTo}</Alert>}
               {problem && <Alert severity="error">{problem}</Alert>}
