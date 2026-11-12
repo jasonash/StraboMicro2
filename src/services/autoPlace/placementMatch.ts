@@ -208,7 +208,7 @@ export function fromMat(mat: Mat): GrayImage {
 
 // ---------------------------------------------------------------- features
 
-interface Features {
+export interface Features {
   /** x, y per keypoint */
   pts: Float32Array;
   /** 1 where the keypoint sits on burned-in graphics (pure black and white, like a scale bar) */
@@ -219,7 +219,7 @@ interface Features {
   height: number;
 }
 
-function freeFeatures(f: Features) {
+export function freeFeatures(f: Features) {
   f.descriptors.delete();
 }
 
@@ -287,7 +287,8 @@ function spreadStrongest(xs: Float32Array, responses: Float32Array, width: numbe
   return keep;
 }
 
-function findFeatures(cv: OpenCV, raw: Mat, cap: number): Features {
+/** Features of a gray image (also used by the image stitcher, src/services/stitch) */
+export function findFeatures(cv: OpenCV, raw: Mat, cap: number): Features {
   const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
   const eq = new cv.Mat();
   clahe.apply(raw, eq);
@@ -348,7 +349,7 @@ export interface Pairs {
   graphic: number[];
 }
 
-function matchFeatures(cv: OpenCV, d: Features, p: Features, keepGraphics: boolean): Pairs {
+export function matchFeatures(cv: OpenCV, d: Features, p: Features, keepGraphics: boolean): Pairs {
   const pairs: Pairs = { src: [], dst: [], graphic: [] };
   if (d.count < 3 || p.count < 3) return pairs;
   const matcher = new cv.BFMatcher(cv.NORM_HAMMING);
@@ -378,7 +379,7 @@ export interface Fit {
   n: number;
 }
 
-function fitAffine(cv: OpenCV, pairs: Pairs): Fit | null {
+export function fitAffine(cv: OpenCV, pairs: Pairs): Fit | null {
   const count = pairs.src.length / 2;
   if (count < 6) return null;
   const a = cv.matFromArray(count, 1, cv.CV_32FC2, pairs.src);
