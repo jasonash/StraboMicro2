@@ -28,7 +28,7 @@ import {
 } from '../src/services/stitch/stitchLayout.ts';
 import { hasGraphics, matchPair, snapGroup, tileFeatures, type TileFeatures } from '../src/services/stitch/stitchMatch.ts';
 import { hardPairs, quickPairs, stitchTiles, unplacedTiles, type StitchProgress } from '../src/services/stitch/stitch.ts';
-import { cutTile, cutTiles, makeScene, randomOf, truthOf, type CutTile } from './stitchFixtures.mts';
+import { accuracy, cutTile, cutTiles, makeScene, randomOf, truthOf, type Accuracy, type CutTile } from './stitchFixtures.mts';
 
 const root = path.resolve(import.meta.dirname, '..');
 const only = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : null;
@@ -243,45 +243,6 @@ if (wanted('math')) {
 }
 
 // ---------------------------------------------------------------- 2. tiles with a known truth
-
-interface Accuracy {
-  /** Distance between where two overlapping tiles put the same true point: median, max (full-size pixels) */
-  median: number;
-  max: number;
-  /** Largest corner error over the whole group after the best overall fit */
-  whole: number;
-}
-
-/** truth: per tile index, tile pixel -> scene pixel */
-function accuracy(layout: StitchLayout, groupIndex: number, truth: AffineMatrix[]): Accuracy {
-  const g = layout.groups[groupIndex];
-  const seams: number[] = [];
-  for (const o of layout.overlaps) {
-    if (!g.placements[o.a] || !g.placements[o.b]) continue;
-    const ta = layout.tiles[o.a];
-    const inB = apply(multiply(invert(truth[o.b]), truth[o.a]), ta.width / 2, ta.height / 2);
-    const p = apply(g.placements[o.a], ta.width / 2, ta.height / 2);
-    const q = apply(g.placements[o.b], inB[0], inB[1]);
-    seams.push(Math.hypot(p[0] - q[0], p[1] - q[1]));
-  }
-  seams.sort((x, y) => x - y);
-  const src: number[] = [];
-  const dst: number[] = [];
-  for (const t of g.tiles) {
-    const { width, height } = layout.tiles[t];
-    for (const [x, y] of [[0, 0], [width, 0], [width, height], [0, height]]) {
-      src.push(...apply(g.placements[t], x, y));
-      dst.push(...apply(truth[t], x, y));
-    }
-  }
-  const S = fitSimilarity(src, dst);
-  let whole = 0;
-  for (let k = 0; k < src.length / 2; k++) {
-    const [x, y] = apply(S, src[2 * k], src[2 * k + 1]);
-    whole = Math.max(whole, Math.hypot(x - dst[2 * k], y - dst[2 * k + 1]));
-  }
-  return { median: seams[seams.length >> 1] ?? 0, max: seams[seams.length - 1] ?? 0, whole };
-}
 
 const inputsOf = (tiles: CutTile[]) => tiles.map((t) => ({ id: t.id, source: memorySource(cv, t.image) }));
 const fmt = (a: Accuracy) => `neighbours ${a.median.toFixed(2)} / ${a.max.toFixed(2)} px, whole ${a.whole.toFixed(2)} px`;

@@ -50,6 +50,21 @@ export interface StitchResult {
   ranHardPass: boolean;
 }
 
+/** More images than this are refused (design decision 18) */
+export const MAX_IMAGES = 200;
+/** From this many images on, a time estimate is shown before starting */
+export const ESTIMATE_FROM = 60;
+
+/**
+ * Rough time of the quick pass, in seconds, for the estimate shown before starting. Measured
+ * 2026-11-12 on an Apple M-series Mac: 0.17 s per image and per pair on one worker, close to
+ * evenly divided by the workers; the figures here leave room for slower computers.
+ */
+export function estimateSeconds(images: number, workers: number): number {
+  const pairs = (images * (images - 1)) / 2;
+  return (images * 0.3 + pairs * 0.25) / Math.max(1, workers);
+}
+
 /** Every pair of n tiles */
 export function quickPairs(n: number): Array<[number, number]> {
   const pairs: Array<[number, number]> = [];

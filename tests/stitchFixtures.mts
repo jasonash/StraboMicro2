@@ -6,7 +6,8 @@
  * level, some with stripes like twinning, dark grain boundaries and a fine texture.
  */
 
-import type { GrayImage } from '../src/services/autoPlace/placementMatch.ts';
+import { apply, fitSimilarity, invert, multiply, type GrayImage } from '../src/services/autoPlace/placementMatch.ts';
+import type { StitchLayout } from '../src/services/stitch/stitchLayout.ts';
 import type { AffineMatrix } from '../src/utils/affineTransform.ts';
 
 /** Seeded random numbers in [0, 1) */
@@ -204,4 +205,45 @@ export function truthOf(cx: number, cy: number, rad: number, mag: number, width:
   const a = Math.cos(rad) / mag;
   const q = Math.sin(rad) / mag;
   return [a, -q, cx - (a * width) / 2 + (q * height) / 2, q, a, cy - (q * width) / 2 - (a * height) / 2];
+}
+
+// ---------------------------------------------------------------- measuring a layout against the truth
+
+export interface Accuracy {
+  /** Distance between where two overlapping tiles put the same true point: median, max (full-size pixels) */
+  median: number;
+  max: number;
+  /** Largest corner error over the whole group after the best overall fit */
+  whole: number;
+}
+
+/** truth: per tile index, tile pixel -> scene pixel */
+export function accuracy(layout: StitchLayout, groupIndex: number, truth: AffineMatrix[]): Accuracy {
+  const g = layout.groups[groupIndex];
+  const seams: number[] = [];
+  for (const o of layout.overlaps) {
+    if (!g.placements[o.a] || !g.placements[o.b]) continue;
+    const ta = layout.tiles[o.a];
+    const inB = apply(multiply(invert(truth[o.b]), truth[o.a]), ta.width / 2, ta.height / 2);
+    const p = apply(g.placements[o.a], ta.width / 2, ta.height / 2);
+    const q = apply(g.placements[o.b], inB[0], inB[1]);
+    seams.push(Math.hypot(p[0] - q[0], p[1] - q[1]));
+  }
+  seams.sort((x, y) => x - y);
+  const src: number[] = [];
+  const dst: number[] = [];
+  for (const t of g.tiles) {
+    const { width, height } = layout.tiles[t];
+    for (const [x, y] of [[0, 0], [width, 0], [width, height], [0, height]]) {
+      src.push(...apply(g.placements[t], x, y));
+      dst.push(...apply(truth[t], x, y));
+    }
+  }
+  const S = fitSimilarity(src, dst);
+  let whole = 0;
+  for (let k = 0; k < src.length / 2; k++) {
+    const [x, y] = apply(S, src[2 * k], src[2 * k + 1]);
+    whole = Math.max(whole, Math.hypot(x - dst[2 * k], y - dst[2 * k + 1]));
+  }
+  return { median: seams[seams.length >> 1] ?? 0, max: seams[seams.length - 1] ?? 0, whole };
 }
