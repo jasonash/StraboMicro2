@@ -480,3 +480,84 @@ export function fitGroupToTarget(
   if (src.length < 4) return null;
   return fitSimilarity(src, dst);
 }
+
+// ---------------------------------------------------------------- the fully covered rectangle
+
+/** True when the point (mosaic pixels) lies on the tile */
+function onTile(toMosaic: AffineMatrix, width: number, height: number, x: number, y: number): boolean {
+  const [u, v] = apply(invert(toMosaic), x, y);
+  return u >= 0 && v >= 0 && u <= width && v <= height;
+}
+
+/**
+ * The largest upright rectangle of the saved mosaic that tiles cover completely ("Crop to the
+ * fully covered rectangle"), in saved mosaic pixels; null when there is none worth having.
+ * Found on a coarse grid (at most GRID cells on the long side) and pulled in by one cell, so
+ * the rectangle never reaches into an empty area.
+ */
+export function coveredRectangle(layout: StitchLayout, frame: MosaicFrame): { left: number; top: number; width: number; height: number } | null {
+  const GRID = 400;
+  const cell = Math.max(1, Math.max(frame.width, frame.height) / GRID);
+  const cols = Math.max(1, Math.floor(frame.width / cell));
+  const rows = Math.max(1, Math.floor(frame.height / cell));
+  const tiles = Object.entries(frame.toMosaic).map(([t, m]) => ({ inverse: invert(m), width: layout.tiles[Number(t)].width, height: layout.tiles[Number(t)].height }));
+  // Grid points (cell corners) that lie on some tile
+  const on = new Uint8Array((cols + 1) * (rows + 1));
+  for (let r = 0; r <= rows; r++) {
+    for (let c = 0; c <= cols; c++) {
+      const x = c * cell;
+      const y = r * cell;
+      for (const t of tiles) {
+        const [u, v] = apply(t.inverse, x, y);
+        if (u >= 0 && v >= 0 && u <= t.width && v <= t.height) {
+          on[r * (cols + 1) + c] = 1;
+          break;
+        }
+      }
+    }
+  }
+  // A cell counts when its four corners do. Largest rectangle of such cells (histogram method).
+  const heights = new Int32Array(cols);
+  let best = { area: 0, c0: 0, c1: 0, r0: 0, r1: 0 };
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const full = on[r * (cols + 1) + c] && on[r * (cols + 1) + c + 1] && on[(r + 1) * (cols + 1) + c] && on[(r + 1) * (cols + 1) + c + 1];
+      heights[c] = full ? heights[c] + 1 : 0;
+    }
+    const stack: number[] = [];
+    for (let c = 0; c <= cols; c++) {
+      const h = c < cols ? heights[c] : 0;
+      while (stack.length && heights[stack[stack.length - 1]] >= h) {
+        const top = stack.pop()!;
+        const left = stack.length ? stack[stack.length - 1] + 1 : 0;
+        const area = heights[top] * (c - left);
+        if (area > best.area) best = { area, c0: left, c1: c, r0: r - heights[top] + 1, r1: r + 1 };
+      }
+      stack.push(c);
+    }
+  }
+  // One cell in from every side
+  const c0 = best.c0 + 1;
+  const c1 = best.c1 - 1;
+  const r0 = best.r0 + 1;
+  const r1 = best.r1 - 1;
+  if (c1 - c0 < 2 || r1 - r0 < 2) return null;
+  const left = Math.ceil(c0 * cell);
+  const top = Math.ceil(r0 * cell);
+  return { left, top, width: Math.floor(c1 * cell) - left, height: Math.floor(r1 * cell) - top };
+}
+
+/** True when the mosaic has areas no tile covers (so fill color and crop are worth offering) */
+export function hasEmptyAreas(layout: StitchLayout, frame: MosaicFrame): boolean {
+  const tiles = Object.entries(frame.toMosaic).map(([t, m]) => ({ m, ...layout.tiles[Number(t)] }));
+  const STEPS = 60;
+  for (let r = 0; r <= STEPS; r++) {
+    for (let c = 0; c <= STEPS; c++) {
+      // Just inside the edge, so rounding at the border does not count
+      const x = 1 + (c / STEPS) * (frame.width - 2);
+      const y = 1 + (r / STEPS) * (frame.height - 2);
+      if (!tiles.some((t) => onTile(t.m, t.width, t.height, x, y))) return true;
+    }
+  }
+  return false;
+}

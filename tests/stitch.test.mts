@@ -22,12 +22,14 @@ import sharp from 'sharp';
 import { apply, fitSimilarity, invert, memorySource, multiply, type GrayImage, type OpenCV } from '../src/services/autoPlace/placementMatch.ts';
 import type { AffineMatrix } from '../src/utils/affineTransform.ts';
 import {
-  fitGroupToTarget, groupOfTile, groupsOf, joinGroups, mosaicFrame, mosaicPixelsPerUnit, otherMagnifications, placeGroup,
+  coveredRectangle, fitGroupToTarget, groupOfTile, groupsOf, hasEmptyAreas, joinGroups, mosaicFrame, mosaicPixelsPerUnit, otherMagnifications, placeGroup,
   rateSeams, separateTile, sizeAndTurn, solveLayout, solveLinear, thinPairs, POINTS_KEPT,
   type Overlap, type StitchLayout, type StitchTile,
 } from '../src/services/stitch/stitchLayout.ts';
 import { hasGraphics, matchPair, snapGroup, tileFeatures, type TileFeatures } from '../src/services/stitch/stitchMatch.ts';
 import { hardPairs, quickPairs, stitchTiles, unplacedTiles, type StitchProgress } from '../src/services/stitch/stitch.ts';
+import { mosaicName } from '../src/utils/mosaicName.ts';
+import { durationText, estimateText, groupText, overlapsText, placedText, progressLines, sizeText, skippedText, tooManyText } from '../src/utils/stitchText.ts';
 import { accuracy, cutTile, cutTiles, makeScene, randomOf, truthOf, type Accuracy, type CutTile } from './stitchFixtures.mts';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -240,6 +242,70 @@ if (wanted('math')) {
     check('mosaicFrame: pixel size of the median tile, not the anchor', f.fullWidth === 2500 && Math.abs(sizeAndTurn(f.toMosaic[1]).scale - 1) < 1e-9, f.fullWidth);
     check('mosaicPixelsPerUnit follows the saved share', mosaicPixelsPerUnit(1250, capped) === 625);
   }
+}
+
+if (wanted('math')) {
+  // The fully covered rectangle: an L of three 1000 x 800 tiles (top left, top right, bottom left)
+  const three: StitchLayout = {
+    tiles: [0, 1, 2].map((k) => ({ id: `c${k}`, width: 1000, height: 800 })),
+    overlaps: [],
+    groups: [{ tiles: [0, 1, 2], placements: { 0: turn(0, 1, 0, 0), 1: turn(0, 1, 900, 30), 2: turn(0, 1, 20, 700) } }],
+    dropped: [],
+  };
+  const frame = mosaicFrame(three, three.groups[0], 10000)!;
+  check('fixture: the L is 1900 x 1500', frame.width === 1900 && frame.height === 1500, [frame.width, frame.height]);
+  check('hasEmptyAreas: the L has an empty corner', hasEmptyAreas(three, frame));
+  const rect = coveredRectangle(three, frame)!;
+  // The top bar (y 30..800, all 1900 wide) is 1.46 million px; tiles 1 and 2 let it reach a little lower on a narrower strip
+  check('coveredRectangle: about the top bar of the L', !!rect && rect.width > 1800 && rect.width * rect.height > 1_400_000 && rect.width * rect.height < 1_500_000 && rect.top >= 30 && rect.top + rect.height <= 830, rect);
+  const inside = (x: number, y: number) => [0, 1, 2].some((t) => {
+    const [u, v] = apply(invert(frame.toMosaic[t]), x, y);
+    return u >= 0 && v >= 0 && u <= 1000 && v <= 800;
+  });
+  let allCovered = true;
+  for (let k = 0; k <= 200; k++) {
+    const f = k / 200;
+    for (const [x, y] of [[rect.left + f * rect.width, rect.top], [rect.left + f * rect.width, rect.top + rect.height], [rect.left, rect.top + f * rect.height], [rect.left + rect.width, rect.top + f * rect.height]]) {
+      if (!inside(x, y)) allCovered = false;
+    }
+  }
+  check('coveredRectangle: every point of its border is on a tile', allCovered);
+  // A turned tile alone: covered rectangle well inside, and the frame has empty corners
+  const one: StitchLayout = { tiles: [three.tiles[0]], overlaps: [], groups: [{ tiles: [0], placements: { 0: turn(20, 1, 0, 0) } }], dropped: [] };
+  const f1 = mosaicFrame(one, one.groups[0], 10000)!;
+  const r1 = coveredRectangle(one, f1)!;
+  check('coveredRectangle: inside a turned tile', !!r1 && r1.width * r1.height > 0.4 * 800000 && r1.width * r1.height < 800000, r1);
+  const flat: StitchLayout = { tiles: [three.tiles[0]], overlaps: [], groups: [{ tiles: [0], placements: { 0: turn(0, 1, 0, 0) } }], dropped: [] };
+  const f0 = mosaicFrame(flat, flat.groups[0], 10000)!;
+  check('hasEmptyAreas: an upright tile alone has none', !hasEmptyAreas(flat, f0));
+  check('saved at half size the rectangle is in saved pixels', (() => {
+    const half = mosaicFrame(three, three.groups[0], 950)!;
+    const r = coveredRectangle(three, half)!;
+    return !!r && Math.abs(r.width - rect.width / 2) < 12 && Math.abs(r.top - rect.top / 2) < 8;
+  })());
+
+  check('mosaicName: the shared start without the counter', mosaicName(['/x/y/TS-12_001.tif', '/x/y/TS-12_002.tif', '/x/y/TS-12_010.tif']) === 'TS-12 mosaic', mosaicName(['/x/y/TS-12_001.tif', '/x/y/TS-12_002.tif', '/x/y/TS-12_010.tif']));
+  check('mosaicName: Windows paths', mosaicName(['C:\\scans\\Quartzite A (1).jpg', 'C:\\scans\\Quartzite A (2).jpg']) === 'Quartzite A mosaic', mosaicName(['C:\\scans\\Quartzite A (1).jpg', 'C:\\scans\\Quartzite A (2).jpg']));
+  check('mosaicName: nothing shared, the folder', mosaicName(['/data/Sample 7/a.tif', '/data/Sample 7/b.tif']) === 'Sample 7 mosaic', mosaicName(['/data/Sample 7/a.tif', '/data/Sample 7/b.tif']));
+  check('mosaicName: only a counter shared, the folder', mosaicName(['/data/run3/0001.tif', '/data/run3/0002.tif']) === 'run3 mosaic', mosaicName(['/data/run3/0001.tif', '/data/run3/0002.tif']));
+  check('mosaicName: one image keeps its whole name', mosaicName(['/data/run3/TS-12_001.tif']) === 'TS-12_001 mosaic', mosaicName(['/data/run3/TS-12_001.tif']));
+  check('mosaicName: nothing at all', mosaicName([]) === 'Mosaic' && mosaicName(['a.tif', 'b.tif']) === 'Mosaic');
+
+  check('placedText', placedText(12, 12) === 'All 12 images placed automatically' && placedText(10, 12) === '10 of 12 images placed automatically' && placedText(2, 2) === 'Both images placed automatically' && placedText(1, 5) === 'The images could not be fitted together automatically', [placedText(12, 12), placedText(10, 12), placedText(1, 5)]);
+  check('sizeText: saved smaller', sizeText({ fullWidth: 18400, fullHeight: 14200, width: 10000, height: 7717, scale: 0.5435 }) === 'Full size would be 18,400 x 14,200 px. It will be saved at 10,000 x 7,717 px (54%).', sizeText({ fullWidth: 18400, fullHeight: 14200, width: 10000, height: 7717, scale: 0.5435 }));
+  check('sizeText: full size', sizeText({ fullWidth: 5400, fullHeight: 4050, width: 5400, height: 4050, scale: 1 }) === 'The mosaic will be 5,400 x 4,050 px.');
+  check('durationText', durationText(20) === 'less than a minute' && durationText(70) === 'about a minute' && durationText(200) === 'about 4 minutes', [durationText(20), durationText(70), durationText(200)]);
+  check('estimateText', estimateText(120, 200) === '120 images: this may take about 4 minutes.');
+  check('tooManyText', tooManyText(240, 200) === '240 images are more than can be stitched in one go (200 at most). Stitch them in parts.');
+  check('skippedText', skippedText(1) === '1 image cannot be used and will be skipped.' && skippedText(2) === '2 images cannot be used and will be skipped.');
+  check('overlapsText, groupText', overlapsText(9) === '9 overlaps found so far' && overlapsText(1) === '1 overlap found so far' && groupText(4) === 'Group of 4 that fit each other' && groupText(1) === 'Fits no other image');
+  const lines = progressLines({ stage: 'pairs', done: 312, total: 1128 });
+  check('progressLines: comparing', JSON.stringify(lines.map((l) => [l.label, l.count, l.state])) === JSON.stringify([['Reading images', '', 'done'], ['Comparing images', '312 of 1,128', 'now'], ['Working out the layout', '', 'waiting']]) && Math.round(lines[1].percent!) === 28, lines);
+  const hardLines = progressLines({ stage: 'hard-pairs', done: 2, total: 20, unplaced: 3 });
+  check('progressLines: the harder pass adds its line', JSON.stringify(hardLines.map((l) => [l.label, l.state])) === JSON.stringify([['Reading images', 'done'], ['Comparing images', 'done'], ['Looking harder at 3 images', 'now'], ['Working out the layout', 'waiting']]), hardLines);
+  const layoutLines = progressLines({ stage: 'layout', done: 0, total: 1 });
+  check('progressLines: the layout has no count', layoutLines[2].state === 'now' && layoutLines[2].count === '' && layoutLines[2].percent === null && layoutLines.length === 3, layoutLines);
+  check('progressLines: reading', progressLines({ stage: 'reading', done: 3, total: 48 })[0].count === '3 of 48' && progressLines({ stage: 'features', done: 40, total: 48 })[0].state === 'now');
 }
 
 // ---------------------------------------------------------------- 2. tiles with a known truth
