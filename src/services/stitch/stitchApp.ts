@@ -14,6 +14,8 @@ import type { FromStitchWorker } from './stitchJobs';
 
 /** One chosen image after "Reading images" */
 export interface PreparedImage {
+  /** Its number within the session (names its preview copy) */
+  index: number;
   /** The original file */
   path: string;
   /** Full size in pixels */
@@ -45,32 +47,41 @@ function api() {
 }
 
 /**
- * Preview copies of the chosen images, a few at a time, in the order given. An image that cannot
- * be used comes back with the reason; the others go on.
+ * Preview copies of chosen images, a few at a time. An image that cannot be used comes back with
+ * the reason; the others go on. firstIndex: the session number of paths[0] (a session's images
+ * are numbered in the order they were added, also over several calls).
  */
 export async function prepareImages(
   session: string,
   paths: string[],
-  onOne?: (done: number, total: number) => void,
-  cancelled: () => boolean = () => false,
+  options: {
+    firstIndex?: number;
+    /** Called as each image finishes, in any order; position is its place in paths */
+    onOne?: (outcome: PrepareOutcome, position: number) => void;
+    cancelled?: () => boolean;
+  } = {},
 ): Promise<PrepareOutcome[]> {
-  const out: PrepareOutcome[] = new Array(paths.length);
+  const firstIndex = options.firstIndex ?? 0;
+  const cancelled = options.cancelled ?? (() => false);
+  const out: PrepareOutcome[] = paths.map((path) => ({ ok: false, path, error: 'Not read' }));
   let next = 0;
-  let done = 0;
   const work = async () => {
     for (;;) {
-      const index = next++;
-      if (index >= paths.length || cancelled()) return;
-      const path = paths[index];
+      const position = next++;
+      if (position >= paths.length || cancelled()) return;
+      const path = paths[position];
+      const index = firstIndex + position;
+      let outcome: PrepareOutcome;
       try {
         const r = await api().stitch.prepare(session, index, path);
-        out[index] = r.ok
-          ? { ok: true, image: { path, width: r.width, height: r.height, previewPath: r.previewPath, previewWidth: r.previewWidth, previewHeight: r.previewHeight, thumbnail: r.thumbnail } }
+        outcome = r.ok
+          ? { ok: true, image: { index, path, width: r.width, height: r.height, previewPath: r.previewPath, previewWidth: r.previewWidth, previewHeight: r.previewHeight, thumbnail: r.thumbnail } }
           : { ok: false, path, error: r.error };
       } catch (error) {
-        out[index] = { ok: false, path, error: error instanceof Error ? error.message : String(error) };
+        outcome = { ok: false, path, error: error instanceof Error ? error.message : String(error) };
       }
-      onOne?.(++done, paths.length);
+      out[position] = outcome;
+      options.onOne?.(outcome, position);
     }
   };
   await Promise.all(Array.from({ length: Math.min(PREPARE_AT_ONCE, paths.length) }, work));
@@ -164,4 +175,19 @@ export async function buildGroup(
   } finally {
     stop();
   }
+}
+
+/** Long side of the copies the review canvas draws, by how many images there are (memory on screen stays bounded) */
+export function canvasPreviewSide(count: number): number {
+  if (count <= 12) return 1024;
+  if (count <= 40) return 640;
+  if (count <= 100) return 384;
+  return 256;
+}
+
+/** A prepared image's preview copy as an object URL (revoke it when done) */
+export async function previewUrl(session: string, image: PreparedImage, maxSide: number): Promise<string> {
+  const bytes = await api().stitch.preview(session, image.index, maxSide);
+  // A copy: what arrives over IPC is typed as possibly shared memory, which a Blob does not take
+  return URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' }));
 }

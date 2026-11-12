@@ -107,6 +107,132 @@ test('stitch engine in the app: preview copies, workers, mosaic file', async ({ 
   expect(ana.consoleErrors.filter((l) => /stitch|worker|opencv/i.test(l))).toEqual([]);
 });
 
+async function writeTiles(dir: string, tiles: Array<{ id: string; image: { data: Uint8Array; width: number; height: number } }>): Promise<string[]> {
+  fs.mkdirSync(dir, { recursive: true });
+  const paths: string[] = [];
+  for (const t of tiles) {
+    const p = path.join(dir, `${t.id}.jpg`);
+    await sharp(Buffer.from(t.image.data.buffer, t.image.data.byteOffset, t.image.data.length), { raw: { width: t.image.width, height: t.image.height, channels: 1 } }).jpeg({ quality: 92 }).toFile(p);
+    paths.push(p);
+  }
+  return paths;
+}
+
+/**
+ * The wizard (Tools > Image Stitcher...), first version: choose images (files and a folder),
+ * fit, review as a viewer (leave out, put back, crop), build, save as an image file.
+ */
+test('Image Stitcher wizard: choose, fit, review, build, save', async ({ launch, runDir }, testInfo) => {
+  test.setTimeout(5 * 60_000);
+  const TW = 2000;
+  const TH = 1500;
+  const scene = makeScene(5800, 3600, 7);
+  // Named so the six share a start: the default file name is "TS-12 mosaic"
+  const tiles = cutTiles(scene, { cols: 3, rows: 2, tileWidth: TW, tileHeight: TH, overlap: 0.15, jitter: 0.03, turn: 2, seed: 9 })
+    .map((t, k) => ({ ...t, id: `TS-12_00${k + 1}` }));
+  const first = await writeTiles(path.join(runDir, 'picked'), tiles.slice(0, 3));
+  const folder = path.join(runDir, 'folder');
+  await writeTiles(folder, tiles.slice(3));
+  // In the folder too: an image of another rock, a file that is not an image, and one that is no image type
+  const stranger = cutTiles(makeScene(2600, 2000, 8), { cols: 1, rows: 1, tileWidth: TW, tileHeight: TH, overlap: 0, seed: 3 }).map((t) => ({ ...t, id: 'TS-12_007' }));
+  await writeTiles(folder, stranger);
+  fs.writeFileSync(path.join(folder, 'TS-12_008.jpg'), 'this is not an image');
+  fs.writeFileSync(path.join(folder, 'notes.txt'), 'not an image type');
+  const out = path.join(runDir, 'saved mosaic.png');
+
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
+  const page = ana.page;
+  await ana.menu('Tools', 'Image Stitcher...');
+  const choose = page.getByRole('dialog', { name: 'Image Stitcher' });
+  await expect(choose.getByText('No images chosen yet')).toBeVisible();
+  const fit = choose.getByRole('button', { name: 'Fit Images Together' });
+  await expect(fit).toBeDisabled();
+
+  await ana.caption('adds three images, then a folder with three more, another rock and a broken file');
+  await ana.answerDialog({ kind: 'open', filePaths: first });
+  await choose.getByRole('button', { name: 'Add Images...' }).click();
+  await expect(choose.getByTestId('stitch-row')).toHaveCount(3);
+  await ana.answerDialog({ kind: 'open', filePaths: [folder] });
+  await choose.getByRole('button', { name: 'Add Folder...' }).click();
+  await expect(choose.getByTestId('stitch-row')).toHaveCount(8);
+  await expect(choose.getByTestId('stitch-count')).toHaveText('8 images');
+  // Every good image shows its size once read; the broken one its reason
+  await expect(choose.getByText('2,000 x 1,500')).toHaveCount(7);
+  await expect(choose.getByText('1 image cannot be used and will be skipped.')).toBeVisible();
+  await expect(choose.getByTestId('stitch-row').filter({ hasText: 'TS-12_008.jpg' })).toContainText('does not appear to be a supported image format');
+  // The same files again add nothing
+  await ana.answerDialog({ kind: 'open', filePaths: first });
+  await choose.getByRole('button', { name: 'Add Images...' }).click();
+  await expect(choose.getByTestId('stitch-row')).toHaveCount(8);
+  await choose.getByLabel('Pixels per unit of the original images').fill('1000');
+
+  await ana.caption('fits the images together');
+  await fit.click();
+  const review = page.getByRole('dialog', { name: 'Review the mosaic' });
+  await expect(review).toBeVisible({ timeout: 120_000 });
+  await expect(review.getByTestId('stitch-placed')).toHaveText('6 of 7 images placed automatically');
+  await expect(review.getByTestId('stitch-canvas')).toHaveAttribute('data-tiles-drawn', '6');
+  await expect(review.getByText('Placed (6)')).toBeVisible();
+  await expect(review.getByText('Not placed (1)')).toBeVisible();
+  await expect(review.getByText('Fits no other image')).toBeVisible();
+  await expect(review.getByText('Left out (0)')).toBeVisible();
+  const sizeOf = async () => {
+    const m = /(?:will be|saved at) ([\d,]+) x ([\d,]+) px/.exec(await review.getByTestId('stitch-size').innerText());
+    if (!m) throw new Error('no size text');
+    return [Number(m[1].replace(/,/g, '')), Number(m[2].replace(/,/g, ''))];
+  };
+  const whole = await sizeOf();
+  expect(Math.abs(whole[0] - (TW * 0.85 * 2 + TW))).toBeLessThan(250);
+
+  await ana.caption('leaves one image out and puts it back');
+  await review.getByRole('button', { name: 'Leave out TS-12_001.jpg' }).click();
+  await expect(review.getByText('Placed (5)')).toBeVisible();
+  await expect(review.getByText('Left out (1)')).toBeVisible();
+  await expect(review.getByTestId('stitch-canvas')).toHaveAttribute('data-tiles-drawn', '5');
+  await review.getByRole('button', { name: 'Put back TS-12_001.jpg' }).click();
+  await expect(review.getByText('Placed (6)')).toBeVisible();
+  expect(await sizeOf()).toEqual(whole);
+
+  // Turned tiles leave empty corners: fill color and crop are offered
+  await expect(review.getByText('Fill empty areas with')).toBeVisible();
+  await review.getByRole('button', { name: 'White' }).click();
+  await review.getByLabel('Crop to the fully covered rectangle').check();
+  const cropped = await sizeOf();
+  expect(cropped[0]).toBeLessThan(whole[0]);
+  expect(cropped[1]).toBeLessThan(whole[1]);
+  expect(cropped[0]).toBeGreaterThan(whole[0] * 0.85);
+  await page.screenshot({ path: testInfo.outputPath('review.png') });
+  await testInfo.attach('review screen', { path: testInfo.outputPath('review.png'), contentType: 'image/png' });
+
+  await ana.caption('closing asks first');
+  await review.getByRole('button', { name: 'Cancel' }).click();
+  const discard = page.getByRole('dialog', { name: 'Discard this mosaic?' });
+  await discard.getByRole('button', { name: 'Keep Working' }).click();
+  await expect(discard).toBeHidden();
+  await expect(review).toBeVisible();
+
+  await ana.caption('builds and saves the mosaic');
+  await review.getByRole('button', { name: 'Build' }).click();
+  const done = page.getByRole('dialog', { name: 'The mosaic is ready' });
+  await expect(done).toBeVisible({ timeout: 60_000 });
+  await expect(done.getByTestId('stitch-built')).toHaveText(`6 images, ${cropped[0].toLocaleString('en-US')} x ${cropped[1].toLocaleString('en-US')} px.`);
+  await expect(done.getByTestId('stitch-scale')).toHaveText('Scale of the mosaic: 1,000 pixels per mm.');
+  await ana.answerDialog({ kind: 'save', filePath: out });
+  await done.getByRole('button', { name: 'Save as an Image File...' }).click();
+  await expect(done.getByText(`Saved to ${out}`)).toBeVisible({ timeout: 60_000 });
+  const meta = await sharp(out).metadata();
+  expect([meta.format, meta.width, meta.height]).toEqual(['png', cropped[0], cropped[1]]);
+  // Cropped to the covered rectangle: no fill anywhere, so no pure white corner pixel rows
+  const corner = await sharp(out).extract({ left: 0, top: 0, width: 40, height: 40 }).raw().toBuffer();
+  expect(corner.some((v) => v < 250)).toBe(true);
+
+  // Saved: closing asks nothing
+  await done.getByRole('button', { name: 'Close' }).click();
+  await expect(done).toBeHidden();
+  expect(await ana.unansweredDialogs()).toEqual([]);
+  expect(ana.consoleErrors.filter((l) => /stitch|worker|opencv|konva/i.test(l))).toEqual([]);
+});
+
 /**
  * Time and memory of the automatic pass in the real app, for the limits of design decision 18.
  * Not a check; run on request:  E2E_STITCH_BENCH=1 npm run e2e -- 41-

@@ -6,6 +6,8 @@
  *   copy and the review screen draws it; the original is read again only to build the mosaic.
  * - build: the mosaic from the originals and their placements (mosaicBuilder.js), with progress
  *   and cancel; save-as: the built mosaic as a JPEG, PNG or TIFF somewhere else.
+ * - preview: a prepared image's copy as JPEG bytes, for the review canvas; choose-folder: every
+ *   supported image in a folder; save-dialog: Save As for the built mosaic.
  * - machine: processors and memory, for the number of workers.
  * - cleanup: removes the session's scratch folder.
  *
@@ -17,7 +19,10 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const sharp = require('sharp');
+const { BrowserWindow, dialog } = require('electron');
 const log = require('electron-log');
+const dialogDirs = require('./dialogDirs');
 const scratchSpace = require('./scratchSpace');
 const imageConverter = require('./imageConverter');
 const { openUserImage } = require('./userImage');
@@ -65,6 +70,64 @@ async function prepare(session, index, imagePath) {
     log.warn('[Stitch] Could not make a preview of', imagePath, error.message);
     return { ok: false, error: `"${path.basename(imagePath)}" could not be read (${error.message}).` };
   }
+}
+
+/** The preview copy of one image as JPEG bytes, shrunk for the review canvas when asked */
+async function preview(session, index, maxSide) {
+  if (!Number.isInteger(index) || index < 0) throw new Error('Bad image number');
+  const file = path.join(sessionDir(session), `tile-${index}.jpg`);
+  if (!(maxSide > 0) || maxSide >= PREVIEW_SIDE) return new Uint8Array(await fs.promises.readFile(file));
+  const data = await sharp(file).resize(Math.round(maxSide), Math.round(maxSide), { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+  return new Uint8Array(data);
+}
+
+/** Image types the stitcher takes: those of the import's file picker */
+const IMAGE_EXTENSIONS = ['.tif', '.tiff', '.jpg', '.jpeg', '.png', '.bmp'];
+
+/** Every supported image directly in a folder (not its subfolders), in the order a person reads the names */
+async function imagesInFolder(folder) {
+  const entries = await fs.promises.readdir(folder, { withFileTypes: true });
+  return entries
+    .filter((e) => e.isFile() && !e.name.startsWith('.') && IMAGE_EXTENSIONS.includes(path.extname(e.name).toLowerCase()))
+    .map((e) => e.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+    .map((name) => path.join(folder, name));
+}
+
+async function chooseFolder(window) {
+  const result = await dialog.showOpenDialog(window, {
+    title: 'Select a Folder of Images',
+    defaultPath: dialogDirs.getDefaultPath('images'),
+    properties: ['openDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return { canceled: true, paths: [] };
+  const folder = result.filePaths[0];
+  const paths = await imagesInFolder(folder);
+  if (paths.length > 0) dialogDirs.remember('images', paths[0]);
+  return { canceled: false, folder, paths };
+}
+
+const FORMAT_OF = { '.jpg': 'jpeg', '.jpeg': 'jpeg', '.png': 'png', '.tif': 'tiff', '.tiff': 'tiff' };
+
+/** Save dialog, then the built mosaic in the format the chosen name ends in (JPEG if none) */
+async function saveWithDialog(window, session, defaultName) {
+  const result = await dialog.showSaveDialog(window, {
+    title: 'Save Mosaic',
+    defaultPath: `${defaultName}.jpg`,
+    filters: [
+      { name: 'JPEG Image', extensions: ['jpg', 'jpeg'] },
+      { name: 'PNG Image', extensions: ['png'] },
+      { name: 'TIFF Image', extensions: ['tif', 'tiff'] },
+    ],
+  });
+  if (result.canceled || !result.filePath) return { success: false, canceled: true };
+  let outputPath = result.filePath;
+  let format = FORMAT_OF[path.extname(outputPath).toLowerCase()];
+  if (!format) {
+    outputPath += '.jpg';
+    format = 'jpeg';
+  }
+  return saveAs(session, outputPath, format);
 }
 
 /** session -> { cancelled } of the build in progress */
@@ -135,7 +198,10 @@ function registerIpc(ipcMain) {
     }));
   ipcMain.handle('stitch:cancel-build', (event, session) => cancelBuild(session));
   ipcMain.handle('stitch:save-as', (event, session, outputPath, format) => saveAs(session, outputPath, format));
+  ipcMain.handle('stitch:preview', (event, session, index, maxSide) => preview(session, index, maxSide));
+  ipcMain.handle('stitch:choose-folder', (event) => chooseFolder(BrowserWindow.fromWebContents(event.sender)));
+  ipcMain.handle('stitch:save-dialog', (event, session, defaultName) => saveWithDialog(BrowserWindow.fromWebContents(event.sender), session, defaultName));
   ipcMain.handle('stitch:cleanup', (event, session) => cleanup(session));
 }
 
-module.exports = { registerIpc, prepare, build, cancelBuild, saveAs, cleanup, machine, PREVIEW_SIDE };
+module.exports = { registerIpc, prepare, preview, imagesInFolder, build, cancelBuild, saveAs, cleanup, machine, PREVIEW_SIDE };

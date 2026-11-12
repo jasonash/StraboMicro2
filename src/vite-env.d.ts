@@ -1399,6 +1399,7 @@ interface Window {
     // Tools menu events
     onPointCount: (callback: () => void) => Unsubscribe;
     onGrainDetection: (callback: () => void) => Unsubscribe;
+    onImageStitcher: (callback: () => void) => Unsubscribe;
     onImageComparator: (callback: () => void) => Unsubscribe;
     onCustomUserData: (callback: () => void) => Unsubscribe;
     onGrainSizeAnalysis: (callback: () => void) => Unsubscribe;
@@ -1456,6 +1457,12 @@ interface Window {
       /** done and total are rows of the mosaic */
       onBuildProgress: (callback: (progress: { session: string; done: number; total: number }) => void) => Unsubscribe;
       saveAs: (session: string, outputPath: string, format: 'jpeg' | 'png' | 'tiff' | 'tiff-plain') => Promise<{ success: boolean; error?: string; path?: string }>;
+      /** A prepared image's preview copy as JPEG bytes, long side at most maxSide */
+      preview: (session: string, index: number, maxSide: number) => Promise<Uint8Array>;
+      /** Folder picker; every supported image directly in the chosen folder */
+      chooseFolder: () => Promise<{ canceled: boolean; folder?: string; paths: string[] }>;
+      /** Save dialog, then the built mosaic as JPEG, PNG or TIFF by the name chosen */
+      saveWithDialog: (session: string, defaultName: string) => Promise<{ success: boolean; canceled?: boolean; error?: string; path?: string }>;
       cleanup: (session: string) => Promise<void>;
     };
 

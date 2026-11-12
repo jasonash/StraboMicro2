@@ -847,6 +847,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:grain-detection', handler);
     return () => ipcRenderer.removeListener('menu:grain-detection', handler);
   },
+  onImageStitcher: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:image-stitcher', handler);
+    return () => ipcRenderer.removeListener('menu:image-stitcher', handler);
+  },
   onImageComparator: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('menu:image-comparator', handler);
@@ -931,6 +936,9 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener('stitch:build-progress', handler);
     },
     saveAs: (session, outputPath, format) => ipcRenderer.invoke('stitch:save-as', session, outputPath, format),
+    preview: (session, index, maxSide) => ipcRenderer.invoke('stitch:preview', session, index, maxSide),
+    chooseFolder: () => ipcRenderer.invoke('stitch:choose-folder'),
+    saveWithDialog: (session, defaultName) => ipcRenderer.invoke('stitch:save-dialog', session, defaultName),
     cleanup: (session) => ipcRenderer.invoke('stitch:cleanup', session),
   },
 });

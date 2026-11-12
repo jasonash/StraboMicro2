@@ -969,6 +969,14 @@ function createWindow() {
           }
         },
         {
+          label: 'Image Stitcher...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:image-stitcher');
+            }
+          }
+        },
+        {
           label: 'Grain Size Analysis...',
           accelerator: 'CmdOrCtrl+Shift+A',
           click: () => {

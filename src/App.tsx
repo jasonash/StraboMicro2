@@ -31,6 +31,7 @@ import { ProjectPrepDialog } from './components/dialogs/ProjectPrepDialog';
 import { PointCountDialog } from './components/dialogs/PointCountDialog';
 import { GrainDetectionDialog } from './components/dialogs/GrainDetectionDialog';
 import { ImageComparatorDialog } from './components/dialogs/ImageComparatorDialog';
+import { ImageStitcherDialog } from './components/dialogs/ImageStitcherDialog';
 import { CustomUserDataDialog } from './components/dialogs/CustomUserDataDialog';
 import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisDialog';
 import { StraboToolsDialog } from './components/dialogs/StraboToolsDialog';
@@ -226,6 +227,7 @@ function App() {
   const [isPointCountDialogOpen, setIsPointCountDialogOpen] = useState(false);
   const [isGrainDetectionDialogOpen, setIsGrainDetectionDialogOpen] = useState(false);
   const [isImageComparatorDialogOpen, setIsImageComparatorDialogOpen] = useState(false);
+  const [isImageStitcherOpen, setIsImageStitcherOpen] = useState(false);
   const [isCustomUserDataDialogOpen, setIsCustomUserDataDialogOpen] = useState(false);
   const [isGrainSizeAnalysisDialogOpen, setIsGrainSizeAnalysisDialogOpen] = useState(false);
   const [isStraboToolsDialogOpen, setIsStraboToolsDialogOpen] = useState(false);
@@ -563,6 +565,10 @@ function App() {
     }));
 
     // Image Comparator menu item (Tools menu)
+    unsubscribers.push(window.api.onImageStitcher(() => {
+      setIsImageStitcherOpen(true);
+    }));
+
     unsubscribers.push(window.api.onImageComparator(() => {
       setIsImageComparatorDialogOpen(true);
     }));
@@ -1989,6 +1995,7 @@ function App() {
         onClose={() => setIsGrainDetectionDialogOpen(false)}
         micrographId={activeMicrographId}
       />
+      <ImageStitcherDialog open={isImageStitcherOpen} onClose={() => setIsImageStitcherOpen(false)} />
       <ImageComparatorDialog
         open={isImageComparatorDialogOpen}
         onClose={() => setIsImageComparatorDialogOpen(false)}
