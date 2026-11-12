@@ -35,6 +35,7 @@
     "test:grain-outline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainOutline.test.mts",
     "test:auto-place": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/autoPlace.test.mts",
     "test:stitch": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/stitch.test.mts",
+    "test:mosaic-builder": "node tests/mosaicBuilder.test.js",
     "test:affine-scale": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/affineScale.test.mts",
     "test:grain-encoder-check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainEncoderCheck.mts",
     "test:custom-user-data": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/customUserData.test.mts",
