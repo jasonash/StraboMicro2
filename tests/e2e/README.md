@@ -15,6 +15,10 @@ MICROSYNC_ENABLED. Vite is started automatically if it is not running.
     npm run e2e:report          # the last run's report (screens, logs, traces)
     npm run e2e:typecheck
 
+To show someone the tests: `scripts/micro-e2e.sh` (installed as `micro-e2e`)
+runs a short playlist in watch mode after checking Docker and port 5173;
+`micro-e2e --help` lists its options. It changes nothing for the normal runs.
+
 A failed scenario attaches each copy's screen, main.log, any native dialog
 the test did not answer, and a trace (`npx playwright show-trace <zip>`:
 every step with a screenshot).
