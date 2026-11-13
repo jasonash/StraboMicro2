@@ -804,5 +804,31 @@ if (wanted('real')) {
   }
 }
 
+// ---------------------------------------------------------------- memory
+
+if (wanted('memory')) {
+  console.log('memory: comparing pairs does not fill the OpenCV memory');
+  // 192 images are 18,336 pairs; a few hundred bytes kept per keypoint and pair made each worker grow by hundreds of MB
+  const scene = makeScene(2400, 1000, 21);
+  const [left, right] = cutTiles(scene, { cols: 2, rows: 1, tileWidth: 1300, tileHeight: 1000, overlap: 0.15, jitter: 0, seed: 2 });
+  const fa = await tileFeatures(cv, memorySource(cv, left.image), 'quick');
+  const fb = await tileFeatures(cv, memorySource(cv, right.image), 'quick');
+  // Where a fresh 1 MB block lands: it moves up by whatever was left behind in between
+  const memory = cv as unknown as { _malloc(bytes: number): number; _free(at: number): void };
+  const top = () => {
+    const at = memory._malloc(1 << 20);
+    memory._free(at);
+    return at;
+  };
+  for (let k = 0; k < 5; k++) matchPair(cv, 0, 1, fa, fb);
+  const before = top();
+  let found = 0;
+  for (let k = 0; k < 40; k++) if (matchPair(cv, 0, 1, fa, fb)) found++;
+  const leftMb = (top() - before) / 1024 / 1024;
+  check('fixture: the pair overlaps', found === 40, found);
+  // Not freeing the match lists left 6.4 MB here (160 KB per pair of 3,000 keypoints)
+  check('40 more comparisons leave nothing behind in the OpenCV memory', Math.abs(leftMb) < 0.5, `${leftMb.toFixed(2)} MB with ${fa.count} and ${fb.count} keypoints`);
+}
+
 console.log(`\n${passes} passed, ${failures} failed`);
 process.exit(failures ? 1 : 0);

@@ -426,10 +426,12 @@ export function matchFeatures(cv: OpenCV, d: Features, p: Features, keepGraphics
   const knn = new cv.DMatchVectorVector();
   matcher.knnMatch(d.descriptors, p.descriptors, knn, 2);
   for (let i = 0; i < knn.size(); i++) {
+    // get() hands out a copy that lives in the OpenCV memory until it is deleted
     const two = knn.get(i);
-    if (two.size() < 2) continue;
-    const best = two.get(0);
-    if (best.distance >= RATIO * two.get(1).distance) continue;
+    const best = two.size() < 2 ? null : two.get(0);
+    const isClear = best !== null && best.distance < RATIO * two.get(1).distance;
+    two.delete();
+    if (!best || !isClear) continue;
     const qi = best.queryIdx;
     const ti = best.trainIdx;
     if (!keepGraphics && d.graphic[qi] && p.graphic[ti]) continue;

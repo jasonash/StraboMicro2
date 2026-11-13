@@ -314,11 +314,23 @@ test('stitch bench: a large set into the project with its originals', async ({ l
   const page = ana.page;
 
   const memory = () => ana.app.evaluate(({ app }) => app.getAppMetrics().reduce((sum, m) => sum + m.memory.workingSetSize, 0)).catch(() => 0);
+  /** Per kind of process (Browser = main, Tab = the window with its workers, GPU, Utility), in KB */
+  const byKind = () => ana.app.evaluate(({ app }) => {
+    const out: Record<string, number> = {};
+    for (const m of app.getAppMetrics()) out[m.type] = (out[m.type] ?? 0) + m.memory.workingSetSize;
+    return out;
+  }).catch(() => ({} as Record<string, number>));
   let peak = 0;
+  let peakKinds: Record<string, number> = {};
   let sampling = true;
   const sampler = (async () => {
     while (sampling) {
-      peak = Math.max(peak, await memory());
+      const kinds = await byKind();
+      const total = Object.values(kinds).reduce((sum, kb) => sum + kb, 0);
+      if (total > peak) {
+        peak = total;
+        peakKinds = kinds;
+      }
       await new Promise((r) => setTimeout(r, 500));
     }
   })();
@@ -327,7 +339,7 @@ test('stitch bench: a large set into the project with its originals', async ({ l
     peak = 0;
     const t0 = Date.now();
     const result = await work();
-    console.log(`[e2e bench] ${count} images, ${name}: ${((Date.now() - t0) / 1000).toFixed(1)} s, app memory ${mb(peak)} MB at most`);
+    console.log(`[e2e bench] ${count} images, ${name}: ${((Date.now() - t0) / 1000).toFixed(1)} s, app memory ${mb(peak)} MB at most (${Object.entries(peakKinds).map(([kind, kb]) => `${kind} ${mb(kb)}`).join(', ')})`);
     return result;
   };
   console.log(`[e2e bench] app memory before: ${mb(await memory())} MB`);
