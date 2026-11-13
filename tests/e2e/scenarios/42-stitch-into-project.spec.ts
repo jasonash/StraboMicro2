@@ -291,3 +291,95 @@ test('Keep the originals: placed on the turned and mirrored mosaic, hidden, one 
   await expect.poll(async () => (await rows()).map((m) => m.name)).toEqual(['Overview']);
   expect(ana.consoleErrors.filter((l) => /stitch|worker|opencv|konva|mosaic|original/i.test(l))).toEqual([]);
 });
+
+/**
+ * Time and memory of a large set through the whole wizard, with the originals kept: fitting,
+ * building, and Finish in New Micrograph (one conversion per original). Not a check; run on request:
+ *   E2E_STITCH_BENCH=1 [E2E_STITCH_GRID=12x8] npm run e2e -- 42-
+ */
+test('stitch bench: a large set into the project with its originals', async ({ launch, runDir }) => {
+  test.skip(process.env.E2E_STITCH_BENCH !== '1', 'bench only on request');
+  test.setTimeout(60 * 60_000);
+  const [cols, rows] = (process.env.E2E_STITCH_GRID ?? '12x8').split('x').map(Number);
+  const BW = 2000;
+  const BH = 1500;
+  const scene = makeScene(Math.ceil(BW * (0.85 * (cols - 1) + 1.1)), Math.ceil(BH * (0.85 * (rows - 1) + 1.1)), 3);
+  const tiles = cutTiles(scene, { cols, rows, tileWidth: BW, tileHeight: BH, overlap: 0.15, jitter: 0.03, seed: 5 })
+    .map((t, k) => ({ ...t, id: `TS-12_${String(k + 1).padStart(3, '0')}` }));
+  const files = await writeTiles(`${runDir}/tiles`, tiles);
+  const count = files.length;
+  const p = await makeProject(`${runDir}/fixtures`, 'E2E Stitch Bench', []);
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
+  await openSmz(ana, p.smzPath, p.id);
+  const page = ana.page;
+
+  const memory = () => ana.app.evaluate(({ app }) => app.getAppMetrics().reduce((sum, m) => sum + m.memory.workingSetSize, 0)).catch(() => 0);
+  let peak = 0;
+  let sampling = true;
+  const sampler = (async () => {
+    while (sampling) {
+      peak = Math.max(peak, await memory());
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  })();
+  const mb = (kb: number) => Math.round(kb / 1024);
+  const phase = async <T>(name: string, work: () => Promise<T>): Promise<T> => {
+    peak = 0;
+    const t0 = Date.now();
+    const result = await work();
+    console.log(`[e2e bench] ${count} images, ${name}: ${((Date.now() - t0) / 1000).toFixed(1)} s, app memory ${mb(peak)} MB at most`);
+    return result;
+  };
+  console.log(`[e2e bench] app memory before: ${mb(await memory())} MB`);
+
+  await ana.menu('Tools', 'Image Stitcher...');
+  const choose = page.getByRole('dialog', { name: 'Image Stitcher' });
+  await ana.answerDialog({ kind: 'open', filePaths: files });
+  await phase('reading (list filled)', async () => {
+    await choose.getByRole('button', { name: 'Add Images...' }).click();
+    await expect(choose.getByTestId('stitch-row').locator('img')).toHaveCount(count, { timeout: 10 * 60_000 });
+  });
+  await choose.getByLabel('Pixels per unit of the original images').fill('1000');
+  const review = page.getByRole('dialog', { name: 'Review the mosaic' });
+  await phase('fitting', async () => {
+    await choose.getByRole('button', { name: 'Fit Images Together' }).click();
+    await expect(review).toBeVisible({ timeout: 30 * 60_000 });
+  });
+  console.log(`[e2e bench] ${await review.getByTestId('stitch-placed').innerText()}; ${await review.getByTestId('stitch-size').innerText()}`);
+  const done = page.getByRole('dialog', { name: 'The mosaic is ready' });
+  await phase('building', async () => {
+    await review.getByRole('button', { name: 'Build' }).click();
+    await expect(done).toBeVisible({ timeout: 10 * 60_000 });
+  });
+  await done.getByRole('checkbox', { name: /^Also add the/ }).check();
+  const dialog = page.getByRole('dialog', { name: 'New Reference Micrograph' });
+  await phase('handing over to New Micrograph', async () => {
+    await done.getByRole('button', { name: 'Continue' }).click();
+    await expect(dialog.getByLabel(/^Micrograph File/)).toHaveValue('TS-12 mosaic.tif', { timeout: 5 * 60_000 });
+  });
+  const next = dialog.getByRole('button', { name: 'Next' });
+  const pick = async (combo: string, option: string) => {
+    await dialog.getByRole('combobox', { name: new RegExp(`^${combo}`) }).click();
+    await page.getByRole('option', { name: option, exact: true }).click();
+  };
+  await next.click();
+  await next.click();
+  await pick('Instrument Type', 'Optical Microscopy');
+  await pick('Image Type', 'Plane Polarized Light');
+  for (let k = 0; k < 5; k++) await next.click();
+  const micrographs = () => ana.state((e) => {
+    let n = 0;
+    for (const d of e.app.getState().project?.datasets ?? []) for (const s of d.samples ?? []) n += (s.micrographs ?? []).length;
+    return n;
+  }) as Promise<number>;
+  const before = await micrographs();
+  await phase('Finish (mosaic + originals added)', async () => {
+    await dialog.getByRole('button', { name: /^Finish/ }).click();
+    await expect(dialog).toBeHidden({ timeout: 30 * 60_000 });
+    await expect.poll(micrographs, { timeout: 60_000 }).toBe(before + 1 + count);
+  });
+  await phase('one minute afterwards (tiles, thumbnails)', () => page.waitForTimeout(60_000));
+  sampling = false;
+  await sampler;
+  console.log(`[e2e bench] app memory at the end: ${mb(await memory())} MB`);
+});
