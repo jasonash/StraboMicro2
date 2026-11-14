@@ -9,12 +9,13 @@
  * parked 16-bit gray import, Sentry ELECTRON-2Q..2V).
  *
  * 16-bit values are scaled straight to 8 bits (value / 257, as libvips does),
- * no contrast stretch. Other sample formats (32-bit, float) throw an
- * 'Unsupported ' error, which convertToScratchJPEG sends to sharp/libvips.
+ * no contrast stretch. Samples after the color (5 or more per pixel) are
+ * dropped. Other sample formats (32-bit, float) throw an 'Unsupported ' error,
+ * which convertToScratchJPEG sends to sharp/libvips.
  */
 
 /**
- * @param {{width: number, height: number, data: ArrayLike<number>, palette?: Array<[number, number, number]>}} image
+ * @param {{width: number, height: number, type?: number, data: ArrayLike<number>, palette?: Array<[number, number, number]>}} image
  * @returns {{data: Buffer, channels: number}}
  */
 function tiffImageTo8Bit(image) {
@@ -51,7 +52,37 @@ function tiffImageTo8Bit(image) {
   } else {
     throw new Error(`Unsupported TIFF sample format: ${source.constructor.name}`);
   }
-  return { data, channels: data.length / pixelCount };
+  const channels = data.length / pixelCount;
+  if (!Number.isInteger(channels) || channels < 1) {
+    throw new Error(`Unsupported TIFF layout: ${channels} samples per pixel`);
+  }
+  if (channels <= 4) return { data, channels };
+  return keepColorChannels(data, pixelCount, channels, image.type);
+}
+
+/**
+ * A TIFF may carry extra samples after its color (masks, measurement channels,
+ * several alphas): 5 or more values per pixel. sharp and toRgba take 1 to 4, so
+ * the import stopped with "Expected width, height and channels for raw pixel
+ * input" (Sentry ELECTRON-38, 2026-11-14). The color comes first in each pixel:
+ * 3 samples for RGB (photometric 2), 1 for gray (0 or 1). The rest is dropped.
+ *
+ * @param {Buffer} data 8-bit samples, `channels` per pixel
+ * @param {number} pixelCount
+ * @param {number} channels 5 or more
+ * @param {number} photometric the TIFF's PhotometricInterpretation
+ * @returns {{data: Buffer, channels: number}}
+ */
+function keepColorChannels(data, pixelCount, channels, photometric) {
+  let kept;
+  if (photometric === 2) kept = 3;
+  else if (photometric === 0 || photometric === 1) kept = 1;
+  else throw new Error(`Unsupported TIFF layout: ${channels} samples per pixel (photometric ${photometric})`);
+  const color = Buffer.alloc(pixelCount * kept);
+  for (let i = 0, from = 0, to = 0; i < pixelCount; i++, from += channels, to += kept) {
+    for (let c = 0; c < kept; c++) color[to + c] = data[from + c];
+  }
+  return { data: color, channels: kept };
 }
 
 /**
