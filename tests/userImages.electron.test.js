@@ -46,44 +46,67 @@ function unsortTags(buf) {
 
 /**
  * An uncompressed little-endian TIFF, one strip. samples: Uint8Array or
- * Uint16Array, one sample per pixel. colorMap (palette TIFF): 3 * 256 16-bit
- * values (all reds, then greens, then blues).
+ * Uint16Array. colorMap (palette TIFF): 3 * 256 16-bit values (all reds, then
+ * greens, then blues). samplesPerPixel above 1: the samples of a pixel lie
+ * together; photometric 2 = RGB, 1 = gray; samples after the color are marked
+ * as unspecified extra samples.
  */
-function rawTiff(width, height, samples, colorMap = null) {
+function rawTiff(width, height, samples, colorMap = null, { samplesPerPixel = 1, photometric = 1 } = {}) {
   const bits = samples.BYTES_PER_ELEMENT * 8;
   const pixelBytes = Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength);
-  const mapBytes = colorMap ? Buffer.from(Uint16Array.from(colorMap).buffer) : Buffer.alloc(0);
+  const shorts = (values) => Buffer.from(Uint16Array.from(values).buffer);
+  const extraCount = samplesPerPixel - (photometric === 2 ? 3 : 1);
+  // [tag, type, count, value]; a Buffer as value is stored after the directory
   const tags = [
     [256, 3, 1, width], // ImageWidth
     [257, 3, 1, height], // ImageLength
-    [258, 3, 1, bits], // BitsPerSample
+    [258, 3, samplesPerPixel, samplesPerPixel > 2 ? shorts(new Array(samplesPerPixel).fill(bits)) : bits], // BitsPerSample
     [259, 3, 1, 1], // Compression: none
-    [262, 3, 1, colorMap ? 3 : 1], // Photometric: palette or BlackIsZero
+    [262, 3, 1, colorMap ? 3 : photometric], // Photometric: palette, RGB or BlackIsZero
     [273, 4, 1, 0], // StripOffsets (filled below)
-    [277, 3, 1, 1], // SamplesPerPixel
+    [277, 3, 1, samplesPerPixel], // SamplesPerPixel
     [278, 3, 1, height], // RowsPerStrip
     [279, 4, 1, pixelBytes.length], // StripByteCounts
   ];
-  if (colorMap) tags.push([320, 3, colorMap.length, 0]); // ColorMap (offset filled below)
+  if (colorMap) tags.push([320, 3, colorMap.length, shorts(colorMap)]); // ColorMap
+  if (extraCount > 2) tags.push([338, 3, extraCount, shorts(new Array(extraCount).fill(0))]); // ExtraSamples
   const ifdSize = 2 + tags.length * 12 + 4;
-  const mapOffset = 8 + ifdSize;
-  const pixelOffset = mapOffset + mapBytes.length;
+  const blocks = tags.map((t) => t[3]).filter((v) => Buffer.isBuffer(v));
+  const pixelOffset = 8 + ifdSize + blocks.reduce((sum, block) => sum + block.length, 0);
   const head = Buffer.alloc(8 + ifdSize);
   head.write('II', 0, 'ascii');
   head.writeUInt16LE(42, 2);
   head.writeUInt32LE(8, 4);
   head.writeUInt16LE(tags.length, 8);
+  let blockOffset = 8 + ifdSize;
   tags.forEach(([tag, type, count, value], i) => {
     const at = 10 + i * 12;
     head.writeUInt16LE(tag, at);
     head.writeUInt16LE(type, at + 2);
     head.writeUInt32LE(count, at + 4);
     if (tag === 273) head.writeUInt32LE(pixelOffset, at + 8);
-    else if (tag === 320) head.writeUInt32LE(mapOffset, at + 8);
-    else if (type === 3) head.writeUInt16LE(value, at + 8);
+    else if (Buffer.isBuffer(value)) {
+      head.writeUInt32LE(blockOffset, at + 8);
+      blockOffset += value.length;
+    } else if (type === 3) head.writeUInt16LE(value, at + 8);
     else head.writeUInt32LE(value, at + 8);
   });
-  return Buffer.concat([head, mapBytes, pixelBytes]);
+  return Buffer.concat([head, ...blocks, pixelBytes]);
+}
+
+/**
+ * Pixels with several samples each: the left half of the image holds `left`,
+ * the right half `right` (arrays, one value per sample)
+ */
+function halvesOf(width, height, Type, left, right) {
+  const per = left.length;
+  const data = new Type(width * height * per);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      data.set(x < width / 2 ? left : right, (y * width + x) * per);
+    }
+  }
+  return data;
 }
 
 /** Left half one value, right half another */
@@ -158,9 +181,20 @@ async function run() {
   const palettePath = write('palette.tif', rawTiff(W, H, halves(W, H, Uint8Array, 1, 2), colorMap));
   // 16-bit gray: 30000 and 40000 are 117 and 156 in 8 bits; the low byte alone gives 48 and 64
   const gray16Path = write('gray16.tif', rawTiff(W, H, halves(W, H, Uint16Array, 30000, 40000)));
+  // Samples after the color (Sentry ELECTRON-38: "Expected width, height and channels for raw
+  // pixel input"): the color comes first, the extra samples (here 255, 0, 255...) are dropped
+  const rgbExtraPath = write('rgb-extra.tif', rawTiff(W, H,
+    halvesOf(W, H, Uint8Array, [200, 120, 70, 255, 0], [40, 60, 220, 0, 255]), null, { samplesPerPixel: 5, photometric: 2 }));
+  const rgb16ExtraPath = write('rgb16-extra.tif', rawTiff(W, H,
+    halvesOf(W, H, Uint16Array, [51400, 30840, 17990, 65535, 0, 65535], [10280, 15420, 56540, 0, 65535, 0]), null, { samplesPerPixel: 6, photometric: 2 }));
+  const grayExtraPath = write('gray-extra.tif', rawTiff(W, H,
+    halvesOf(W, H, Uint8Array, [117, 255, 0, 255, 0], [156, 0, 255, 0, 255]), null, { samplesPerPixel: 5, photometric: 1 }));
   const cases = [
     { key: 'palette TIFF', file: palettePath, left: [200, 120, 70], right: [40, 60, 220] },
     { key: '16-bit gray TIFF', file: gray16Path, left: [117, 117, 117], right: [156, 156, 156] },
+    { key: 'RGB TIFF with 2 extra samples', file: rgbExtraPath, left: [200, 120, 70], right: [40, 60, 220] },
+    { key: '16-bit RGB TIFF with 3 extra samples', file: rgb16ExtraPath, left: [200, 120, 70], right: [40, 60, 220] },
+    { key: 'gray TIFF with 4 extra samples', file: grayExtraPath, left: [117, 117, 117], right: [156, 156, 156] },
   ];
 
   for (const c of cases) {
