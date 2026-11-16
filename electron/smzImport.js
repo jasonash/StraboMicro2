@@ -620,58 +620,34 @@ async function inspectSmz(smzPath, { shareCode } = {}) {
   try {
     log.info(`[SmzImport] Inspecting .smz file: ${smzPath}`);
 
-    // Verify file exists
-    await fs.promises.access(smzPath, fs.constants.R_OK);
-
-    // Open the ZIP file
-    const directory = await unzipper.Open.file(smzPath);
-
-    // Find the root folder (should be the project ID)
-    // Structure: <project-uuid>/project.json, <project-uuid>/images/, etc.
-    const rootFolders = new Set();
-    for (const file of directory.files) {
-      const parts = file.path.split('/');
-      if (parts.length > 0 && parts[0]) {
-        rootFolders.add(parts[0]);
-      }
+    const archive = await readArchive(smzPath);
+    if (!archive.success) {
+      return archive;
     }
-
-    if (rootFolders.size === 0) {
-      return { success: false, error: 'Invalid .smz file: no root folder found' };
-    }
-
-    if (rootFolders.size > 1) {
-      log.warn('[SmzImport] Multiple root folders found, using first one');
-    }
-
-    const projectId = Array.from(rootFolders)[0];
-    log.info(`[SmzImport] Found project ID: ${projectId}`);
-
-    // Find and read project.json
-    const projectJsonPath = `${projectId}/project.json`;
-    const projectJsonFile = directory.files.find(f => f.path === projectJsonPath);
-
-    if (!projectJsonFile) {
-      return { success: false, error: 'Invalid .smz file: project.json not found' };
-    }
-
-    // Read project.json content
-    const projectJsonBuffer = await projectJsonFile.buffer();
-    const projectJson = JSON.parse(projectJsonBuffer.toString('utf-8'));
-
+    const { archiveId: projectId, projectJson, missingImageIds, micrographIds } = archive;
     const projectName = projectJson.name || 'Untitled Project';
+    const images = (targetId) => ({
+      micrographCount: micrographIds.length,
+      missingImages: missingImageIds.length,
+      keptImages: targetId ? countLocalImages(targetId, missingImageIds) : 0,
+    });
 
     // A local-only copy is what an import replaces; a synced copy of the
     // logged-in (else last) account is never replaced (spec v3 11.4)
     if (shareCode) {
       const target = shareCodeTarget(shareCode, projectId);
       log.info(`[SmzImport] Share code ${shareCode}: ${target ? `replaces ${target}` : 'a new copy'}`);
-      return { success: true, projectId: target || projectId, projectName, projectExists: target !== null, syncedCopy: false };
+      return { success: true, projectId: target || projectId, projectName, projectExists: target !== null, syncedCopy: false, ...images(target) };
     }
     const projectExists = fs.existsSync(projectFolders.getLocalProjectPath(projectId));
     const syncedCopy = projectFolders.ownProjectCopy(projectId) !== null;
+    const imageInfo = images(projectExists && !syncedCopy ? projectId : null);
 
-    log.info(`[SmzImport] Project "${projectName}" (${projectId}), local copy: ${projectExists}, my synced copy: ${syncedCopy}`);
+    log.info(
+      `[SmzImport] Project "${projectName}" (${projectId}), local copy: ${projectExists}, my synced copy: ${syncedCopy}, ` +
+      `no image in the file for ${imageInfo.missingImages} of ${imageInfo.micrographCount} micrograph(s), ` +
+      `${imageInfo.keptImages} of those on this computer`
+    );
 
     return {
       success: true,
@@ -679,11 +655,215 @@ async function inspectSmz(smzPath, { shareCode } = {}) {
       projectName,
       projectExists,
       syncedCopy,
+      ...imageInfo,
     };
   } catch (error) {
     log.error('[SmzImport] Error inspecting .smz file:', error);
     return { success: false, error: error.message };
   }
+}
+
+/**
+ * Open an .smz file and read what the import needs to know before it
+ * touches anything: the archive's project id, its project.json, and which
+ * micrographs come without an image file.
+ *
+ * Structure: <project-uuid>/project.json, <project-uuid>/images/<micrograph-id>, ...
+ *
+ * @param {string} smzPath
+ * @returns {Promise<{success: true, archiveId: string, projectJson: Object, micrographIds: string[], missingImageIds: string[]} | {success: false, error: string}>}
+ */
+async function readArchive(smzPath) {
+  await fs.promises.access(smzPath, fs.constants.R_OK);
+  const directory = await unzipper.Open.file(smzPath);
+
+  // The root folder is the project ID
+  const rootFolders = new Set();
+  for (const file of directory.files) {
+    const parts = file.path.split('/');
+    if (parts.length > 0 && parts[0]) {
+      rootFolders.add(parts[0]);
+    }
+  }
+
+  if (rootFolders.size === 0) {
+    return { success: false, error: 'Invalid .smz file: no root folder found' };
+  }
+  if (rootFolders.size > 1) {
+    log.warn('[SmzImport] Multiple root folders found, using first one');
+  }
+
+  const archiveId = Array.from(rootFolders)[0];
+  log.info(`[SmzImport] Found project ID: ${archiveId}`);
+
+  const projectJsonFile = directory.files.find(f => f.path === `${archiveId}/project.json`);
+  if (!projectJsonFile) {
+    return { success: false, error: 'Invalid .smz file: project.json not found' };
+  }
+  const projectJson = JSON.parse((await projectJsonFile.buffer()).toString('utf-8'));
+
+  const micrographIds = micrographIdsOf(projectJson);
+  const missingImageIds = imagesMissingFromArchive(directory.files, archiveId, micrographIds);
+  return { success: true, archiveId, projectJson, micrographIds, missingImageIds };
+}
+
+/**
+ * Every micrograph id in a project.json, in tree order
+ * @param {Object} projectJson
+ * @returns {string[]}
+ */
+function micrographIdsOf(projectJson) {
+  const ids = [];
+  for (const dataset of projectJson?.datasets || []) {
+    for (const sample of dataset?.samples || []) {
+      for (const micrograph of sample?.micrographs || []) {
+        if (micrograph && typeof micrograph.id === 'string' && micrograph.id !== '') {
+          ids.push(micrograph.id);
+        }
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * The micrographs an archive holds no image for. An image is
+ * images/<micrograph id> with some bytes; a legacy (numeric id) archive may
+ * hold only uiImages/<id>, which the import uses in its place
+ * (ensureImagesFolder).
+ *
+ * @param {Array<{path: string, uncompressedSize?: number}>} files - Archive entries
+ * @param {string} archiveId
+ * @param {string[]} micrographIds
+ * @returns {string[]}
+ */
+function imagesMissingFromArchive(files, archiveId, micrographIds) {
+  const legacy = /^\d+$/.test(archiveId);
+  const withImage = new Set();
+  for (const file of files) {
+    if (!file.path.startsWith(archiveId + '/') || file.path.endsWith('/')) continue;
+    const within = file.path.substring(archiveId.length + 1);
+    const isImage = within.startsWith('images/') || (legacy && within.startsWith('uiImages/'));
+    if (isImage && (file.uncompressedSize ?? 1) > 0) {
+      withImage.add(path.posix.basename(within));
+    }
+  }
+  return micrographIds.filter(id => !withImage.has(id));
+}
+
+/** True when the file exists and has some bytes */
+function hasImageFile(filePath) {
+  try {
+    return fs.statSync(filePath).size > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * How many of these micrographs have an image in this computer's local-only
+ * copy of the project
+ * @param {string} projectId
+ * @param {string[]} micrographIds
+ * @returns {number}
+ */
+function countLocalImages(projectId, micrographIds) {
+  const images = path.join(projectFolders.getLocalProjectPath(projectId), 'images');
+  return micrographIds.filter(id => hasImageFile(path.join(images, id))).length;
+}
+
+/**
+ * Where a replace keeps this computer's images while the project folder is
+ * deleted and rebuilt from the file (outside StraboMicro2Data, so it is never
+ * taken for a project)
+ * @param {string} projectId
+ * @returns {string}
+ */
+function keptImagesFolder(projectId) {
+  const { app } = require('electron');
+  return path.join(app.getPath('userData'), 'import-kept-images', projectId);
+}
+
+/** Move a file, copying across volumes */
+async function moveFile(from, to) {
+  try {
+    await fs.promises.rename(from, to);
+  } catch (error) {
+    if (error.code !== 'EXDEV' && error.code !== 'EPERM') throw error;
+    await fs.promises.copyFile(from, to);
+    await fs.promises.unlink(from);
+  }
+}
+
+/**
+ * Before a replace deletes the local-only copy: move aside its images of the
+ * micrographs the file has no image for, so the replace cannot lose them
+ * (Sentry ELECTRON-39: a file without images replaced a working copy and
+ * every micrograph lost its image).
+ *
+ * @param {string} projectId
+ * @param {string[]} micrographIds - Micrographs the file has no image for
+ * @returns {Promise<number>} How many images were moved aside
+ */
+async function holdLocalImages(projectId, micrographIds) {
+  const images = path.join(projectFolders.getLocalProjectPath(projectId), 'images');
+  const hold = keptImagesFolder(projectId);
+  let held = 0;
+  for (const id of micrographIds) {
+    const from = path.join(images, id);
+    if (!hasImageFile(from)) continue;
+    if (held === 0) await fs.promises.mkdir(hold, { recursive: true });
+    await moveFile(from, path.join(hold, id));
+    held++;
+  }
+  return held;
+}
+
+/**
+ * Put images moved aside by holdLocalImages back into the project's images
+ * folder, where the file brought none. With onlyIds, only those micrographs
+ * get theirs back (the others are no longer in the project); without, every
+ * kept image goes back (the import failed: the old copy is restored as far as
+ * its images go). The holding folder is removed when nothing is left in it
+ * that still might be needed.
+ *
+ * @param {string} projectId
+ * @param {string} imagesFolder - The project's images folder
+ * @param {Set<string> | null} onlyIds
+ * @returns {Promise<number>} How many images were put back
+ */
+async function returnHeldImages(projectId, imagesFolder, onlyIds) {
+  const hold = keptImagesFolder(projectId);
+  let names;
+  try {
+    names = await fs.promises.readdir(hold);
+  } catch (_) {
+    return 0;
+  }
+  await fs.promises.mkdir(imagesFolder, { recursive: true });
+  let returned = 0;
+  let stillNeeded = 0;
+  for (const name of names) {
+    if (onlyIds && !onlyIds.has(name)) continue;
+    const to = path.join(imagesFolder, name);
+    if (hasImageFile(to)) {
+      if (!onlyIds) stillNeeded++;
+      continue;
+    }
+    try {
+      await moveFile(path.join(hold, name), to);
+      returned++;
+    } catch (error) {
+      log.error(`[SmzImport] Could not put back the kept image ${name}:`, error);
+      stillNeeded++;
+    }
+  }
+  if (stillNeeded === 0) {
+    await fs.promises.rm(hold, { recursive: true, force: true });
+  } else {
+    log.warn(`[SmzImport] ${stillNeeded} kept image(s) left in ${hold}`);
+  }
+  return returned;
 }
 
 /**
@@ -729,12 +909,18 @@ async function findAnyFile(dirPath) {
  * A share code imports under the id of the copy that code made before (or
  * a pre-17b copy with the archive's id), else under a new id; the name stays.
  *
+ * A replace keeps the local copy's image of every micrograph the file has no
+ * image for (keptImages in the result); everything else of the local copy
+ * goes.
+ *
  * @param {string} smzPath - Path to the .smz file
  * @param {Function} progressCallback - Callback for progress updates
  * @param {{ asCopy?: boolean, shareCode?: string }} [options]
- * @returns {Promise<{success: boolean, projectId?: string, projectData?: Object, error?: string}>}
+ * @returns {Promise<{success: boolean, projectId?: string, projectData?: Object, keptImages?: number, error?: string}>}
  */
 async function importSmz(smzPath, progressCallback, { asCopy = false, shareCode = '' } = {}) {
+  // Project id whose images are moved aside while its folder is rebuilt
+  let heldFor = null;
   try {
     log.info(`[SmzImport] Starting import of: ${smzPath}`);
 
@@ -763,6 +949,22 @@ async function importSmz(smzPath, progressCallback, { asCopy = false, shareCode 
     projectFolders.useProjectCopy(projectId, projectFolders.getLocalProjectPath(projectId));
 
     sendProgress('Preparing', 5, 'Preparing to import...');
+
+    // Micrographs the file brings no image for: a replace keeps this
+    // computer's images of them (moved aside here, put back after extraction)
+    const archive = await readArchive(smzPath);
+    if (!archive.success) {
+      return archive;
+    }
+    const missingImageIds = archive.missingImageIds;
+    if (missingImageIds.length > 0) {
+      log.warn(`[SmzImport] The file has no image for ${missingImageIds.length} of ${archive.micrographIds.length} micrograph(s)`);
+    }
+    if (projectExists && missingImageIds.length > 0) {
+      heldFor = projectId;
+      const held = await holdLocalImages(projectId, missingImageIds);
+      log.info(`[SmzImport] Kept ${held} image(s) from this computer's copy that the file does not have`);
+    }
 
     // If project exists, delete it first (after user has confirmed)
     if (projectExists) {
@@ -923,6 +1125,14 @@ async function importSmz(smzPath, progressCallback, { asCopy = false, shareCode 
     }
 
     const isLegacyProject = /^\d+$/.test(archiveId);
+
+    // Put back this computer's images the file did not bring
+    let keptImages = 0;
+    if (heldFor) {
+      keptImages = await returnHeldImages(projectId, folderPaths.images, new Set(missingImageIds));
+      heldFor = null;
+      log.info(`[SmzImport] Put back ${keptImages} image(s) from this computer's copy`);
+    }
 
     // Fill in missing images/ files from uiImages (legacy .smz files may lack
     // some or all originals — see ensureImagesFolder)
@@ -1169,9 +1379,21 @@ async function importSmz(smzPath, progressCallback, { asCopy = false, shareCode 
       success: true,
       projectId,
       projectData,
+      keptImages,
     };
   } catch (error) {
     log.error('[SmzImport] Import failed:', error);
+    if (heldFor) {
+      // Never lose the images moved aside: back into the local copy's folder
+      try {
+        const returned = await returnHeldImages(
+          heldFor, path.join(projectFolders.getLocalProjectPath(heldFor), 'images'), null
+        );
+        log.info(`[SmzImport] Import failed; put back ${returned} kept image(s)`);
+      } catch (returnError) {
+        log.error(`[SmzImport] Could not put back the kept images (left in ${keptImagesFolder(heldFor)}):`, returnError);
+      }
+    }
     return { success: false, error: error.message };
   }
 }
