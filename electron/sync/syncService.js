@@ -248,16 +248,25 @@ async function preflight(projectId, restServer) {
     const folder = projectFolders.getProjectFolderPath(projectId);
     if (isSyncedFolder(folder)) return { ok: false, kind: 'exists', message: 'This project is already synced.' };
     const bytes = await loadEngine().syncEngine.estimateUploadBytes(folder);
+    // Micrographs without an image file here: the dialog warns (ELECTRON-39)
+    let missingImages = [];
+    try {
+      const { missingImages: check, micrographsOf } = require('../missingImages');
+      const project = JSON.parse(await fs.promises.readFile(path.join(folder, 'project.json'), 'utf8'));
+      missingImages = check(folder, projectId, micrographsOf(project));
+    } catch (err) {
+      log.warn(`[Sync] Could not check for missing images: ${err.message}`);
+    }
     const tokens = await tokenService.getTokens();
-    if (!tokens || !tokens.user) return { ok: true, bytes, loggedIn: false, problem: null, onServer: null };
+    if (!tokens || !tokens.user) return { ok: true, bytes, missingImages, loggedIn: false, problem: null, onServer: null };
     try {
       const list = await makeClient(restServer).listProjects({ includeLegacy: true });
       const row = (Array.isArray(list) ? list : []).find((p) => p && p.straboId === projectId);
       const onServer = row ? { pid: row.pid, syncFormat: row.syncFormat, syncState: row.syncState, updatedAt: row.updatedAt } : null;
-      return { ok: true, bytes, loggedIn: true, problem: null, onServer };
+      return { ok: true, bytes, missingImages, loggedIn: true, problem: null, onServer };
     } catch (err) {
       const f = failure(err);
-      return { ok: true, bytes, loggedIn: true, problem: { kind: f.kind, message: f.message }, onServer: null };
+      return { ok: true, bytes, missingImages, loggedIn: true, problem: { kind: f.kind, message: f.message }, onServer: null };
     }
   } catch (err) {
     return failure(err);

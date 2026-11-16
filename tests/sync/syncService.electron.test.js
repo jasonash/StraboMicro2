@@ -194,6 +194,21 @@ app.whenReady().then(async () => {
     const imageBytes = fs.statSync(path.join(local, 'images', keep.id)).size;
     check('preflight: size counts the original; logged in; not on the server', pf.ok && pf.bytes >= imageBytes &&
       pf.loggedIn === true && pf.onServer === null && pf.problem === null, JSON.stringify(pf));
+    check('preflight: every image is here, none listed missing', Array.isArray(pf.missingImages) && pf.missingImages.length === 0,
+      JSON.stringify(pf.missingImages));
+    {
+      // ELECTRON-39: the turn-on dialog names micrographs without an image file
+      const imageFile = path.join(local, 'images', keep.id);
+      fs.renameSync(imageFile, `${imageFile}.held`);
+      let pfMissing;
+      try {
+        pfMissing = await svc.preflight(pid, SERVER);
+      } finally {
+        fs.renameSync(`${imageFile}.held`, imageFile);
+      }
+      check('preflight: a micrograph without its image file is listed', pfMissing.ok && pfMissing.missingImages.length === 1 &&
+        pfMissing.missingImages[0].id === keep.id, JSON.stringify(pfMissing && pfMissing.missingImages));
+    }
     const pfFar = await svc.preflight(pid, 'http://127.0.0.1:9');
     check('preflight: unreachable server is a problem, not a failure', pfFar.ok && pfFar.problem && pfFar.problem.kind === 'offline' &&
       pfFar.bytes === pf.bytes, JSON.stringify(pfFar));

@@ -6,6 +6,10 @@
  *
  * Before export, this dialog merges any referenced global presets into the
  * project data to ensure the .smz file is self-contained and shareable.
+ *
+ * Micrographs without an image file here are named first, with Export
+ * Anyway (Sentry ELECTRON-39: the export used to leave them out unseen, so
+ * a copy that had lost its images passed that on).
  */
 
 import { useEffect, useState, useCallback } from 'react';
@@ -19,6 +23,7 @@ import {
   Typography,
   LinearProgress,
   Alert,
+  AlertTitle,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
@@ -26,6 +31,7 @@ import FolderZipIcon from '@mui/icons-material/FolderZip';
 import { useAppStore } from '../../store/useAppStore';
 import type { QuickApplyPreset } from '../../types/preset-types';
 import { closeUnlessEscapeBlocked } from '@/utils/dialogClose';
+import { micrographRefs, missingImagesWarning, type MicrographRef } from '@/utils/missingImages';
 
 interface ExportProgress {
   phase: string;
@@ -130,13 +136,26 @@ export function ExportSmzDialog({
     filePath?: string;
     error?: string;
   } | null>(null);
+  /** Micrographs without an image file here: asked about before exporting */
+  const [missing, setMissing] = useState<MicrographRef[] | null>(null);
 
-  // Start export when dialog opens
+  // When the dialog opens: check the images, then export (or ask first)
   useEffect(() => {
-    if (open && projectId && projectData && !isExporting && !result) {
-      startExport();
-    }
+    if (!open || !projectId || !projectData || isExporting || result || missing) return;
+    let cancelled = false;
+    void (async () => {
+      const found = window.api?.missingImages
+        ? await window.api.missingImages(projectId, micrographRefs(projectData)).catch(() => [])
+        : [];
+      if (cancelled) return;
+      if (found.length > 0) setMissing(found);
+      else void startExport();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [open, projectId, projectData]);
+  const missingWarning = missing && !isExporting && !result ? missingImagesWarning(missing, 'export') : null;
 
   // Set up progress listener
   useEffect(() => {
@@ -194,6 +213,7 @@ export function ExportSmzDialog({
     // Reset state when closing
     setProgress(null);
     setResult(null);
+    setMissing(null);
     setIsExporting(false);
     onClose();
   };
@@ -201,7 +221,7 @@ export function ExportSmzDialog({
   return (
     <Dialog
       open={open}
-      onClose={closeUnlessEscapeBlocked(result ? handleClose : undefined, isExporting)}
+      onClose={closeUnlessEscapeBlocked(result || missingWarning ? handleClose : undefined, isExporting)}
       maxWidth="sm"
       fullWidth
     >
@@ -211,6 +231,20 @@ export function ExportSmzDialog({
       </DialogTitle>
       <DialogContent>
         <Box sx={{ py: 2 }}>
+          {/* Images missing here: asked first */}
+          {missingWarning && (
+            <Alert severity="warning">
+              <AlertTitle sx={{ fontSize: '0.875rem' }}>{missingWarning.title}</AlertTitle>
+              <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                {missingWarning.lines.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+                {missingWarning.more && <li>{missingWarning.more}</li>}
+              </Box>
+              <Box sx={{ mt: 1 }}>{missingWarning.note}</Box>
+            </Alert>
+          )}
+
           {/* Progress state */}
           {isExporting && progress && (
             <>
@@ -251,8 +285,8 @@ export function ExportSmzDialog({
             </>
           )}
 
-          {/* Initializing state */}
-          {isExporting && !progress && (
+          {/* Initializing state (also while the images are checked) */}
+          {((isExporting && !progress) || (!isExporting && !result && !missingWarning)) && (
             <Box sx={{ textAlign: 'center', py: 2 }}>
               <Typography variant="body1" sx={{
                 color: 'text.secondary'
@@ -320,6 +354,11 @@ export function ExportSmzDialog({
       <DialogActions>
         {isExporting ? (
           <Button disabled>Exporting...</Button>
+        ) : missingWarning ? (
+          <>
+            <Button onClick={handleClose}>Cancel</Button>
+            <Button variant="contained" color="warning" onClick={() => void startExport()}>Export Anyway</Button>
+          </>
         ) : (
           <Button onClick={handleClose} variant="contained">
             {result?.success ? 'Done' : 'Close'}

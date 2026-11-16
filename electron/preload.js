@@ -493,6 +493,10 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:export-smz', callback);
   },
 
+  // Micrographs without an image file here (warned before export)
+  missingImages: (projectId, micrographs) =>
+    ipcRenderer.invoke('project:missing-images', projectId, micrographs),
+
   // Export as .smz
   exportSmz: (projectId, projectData) =>
     ipcRenderer.invoke('project:export-smz', projectId, projectData),

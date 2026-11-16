@@ -138,6 +138,8 @@ type SyncPreflightResult =
     ok: true;
     /** Originals and other files (tiles not counted) */
     bytes: number;
+    /** Micrographs without an image file in the folder (the dialog warns) */
+    missingImages: Array<{ id: string; name: string }>;
     loggedIn: boolean;
     /** Why the server cannot take it now (offline, disabled, ...) */
     problem: { kind: SyncFailureKind; message: string } | null;
@@ -1018,6 +1020,8 @@ interface Window {
     onExportSmz: (callback: () => void) => Unsubscribe;
 
     // Export as .smz
+    /** Micrographs without an image file in the project folder (Export as .smz warns first) */
+    missingImages: (projectId: string, micrographs: Array<{ id: string; name: string }>) => Promise<Array<{ id: string; name: string }>>;
     exportSmz: (projectId: string, projectData: any) => Promise<{
       success: boolean;
       canceled?: boolean;
