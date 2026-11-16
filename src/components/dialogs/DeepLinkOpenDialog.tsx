@@ -82,7 +82,7 @@ type DialogState =
   | 'not-found'         // Server has no downloadable project with this pkey
   | 'downloading'       // Download in progress
   | 'inspecting-file'   // Inspecting the downloaded archive
-  | 'confirm-replace'   // Project exists locally; confirm overwrite
+  | 'confirm-replace'   // Project exists locally, or the file lacks images; ask first
   | 'importing'         // Import in progress
   | 'success'           // Import complete
   | 'error';            // Error occurred

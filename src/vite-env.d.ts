@@ -1123,6 +1123,8 @@ interface Window {
         success: boolean;
         projectId?: string;
         projectData?: any;
+        /** Images of this computer's copy kept because the file had none for them */
+        keptImages?: number;
         error?: string;
       }>;
       // Progress updates during import
@@ -1641,6 +1643,12 @@ interface SmzInspectResult {
   projectExists?: boolean;
   /** The logged-in (else last) account has a synced copy (never replaced) */
   syncedCopy?: boolean;
+  /** Micrographs in the file */
+  micrographCount?: number;
+  /** Micrographs the file has no image for */
+  missingImages?: number;
+  /** Of those, how many have an image in the local-only copy a replace keeps */
+  keptImages?: number;
   error?: string;
 }
 

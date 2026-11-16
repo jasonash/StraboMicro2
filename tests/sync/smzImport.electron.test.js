@@ -2,7 +2,8 @@
  * Importing a project file next to synced copies (electron/smzImport.js,
  * spec v3 11.4): my synced copy is never replaced, a separate copy gets a
  * new id, a local-only twin is replaced, version history of an id that has
- * an account copy is kept.
+ * an account copy is kept. A replace keeps this computer's images of the
+ * micrographs the file has no image for (Sentry ELECTRON-39).
  *
  *   npm run test:smz-import
  *
@@ -30,14 +31,17 @@ function check(label, ok, detail = '') {
   }
 }
 
-/** An .smz holding <id>/project.json */
-async function makeSmz(file, project) {
+/** An .smz holding <id>/project.json, plus extra entries (path in the project -> content) */
+async function makeSmz(file, project, extra = {}) {
   const { createZipArchive } = require(`${E}/zipArchive`);
   const archive = await createZipArchive();
   const out = fs.createWriteStream(file);
   const done = new Promise((resolve, reject) => { out.on('close', resolve); archive.on('error', reject); });
   archive.pipe(out);
   archive.append(JSON.stringify(project), { name: `${project.id}/project.json` });
+  for (const [name, content] of Object.entries(extra)) {
+    archive.append(Buffer.from(content), { name: `${project.id}/${name}` });
+  }
   await archive.finalize();
   await done;
 }
@@ -135,6 +139,76 @@ app.whenReady().then(async () => {
     check('share code next to my synced copy: a new copy, synced copy untouched', s4.success && s4.projectId !== P &&
       readJson(path.join(mine, 'project.json')).name === 'Basalt (mine)' && fs.existsSync(path.join(mine, 'sync', 'state.json')),
       JSON.stringify({ success: s4.success, id: s4.projectId, error: s4.error }));
+
+    // ELECTRON-39: a file without some images replaces a local copy that has them
+    projectFolders.setPreferredAccount(null);
+    const R = 'f0a1b2c3-0000-4000-8000-000000000003';
+    const withMicrographs = (id, name, ids) => ({
+      id, name, datasets: [{ id: 'd1', name: 'D', samples: [{ id: 's1', name: 'S', micrographs: ids.map((m) => ({ id: m, name: m })) }] }],
+    });
+    // Real-looking image bytes are not needed: the replace moves files, it does not decode them
+    const smzR = path.join(tmp, 'partial.smz');
+    await makeSmz(smzR, withMicrographs(R, 'Partial', ['m1', 'm2', 'm3', 'm4', 'm5']),
+      { 'images/m1': 'file-m1', 'images/m5': '' });
+    const localR = projectFolders.getLocalProjectPath(R);
+    const writeLocalR = () => {
+      fs.rmSync(localR, { recursive: true, force: true });
+      fs.mkdirSync(path.join(localR, 'images'), { recursive: true });
+      fs.writeFileSync(path.join(localR, 'project.json'), JSON.stringify(withMicrographs(R, 'Local', ['m1', 'm2', 'm3', 'm9'])));
+      for (const m of ['m1', 'm2', 'm3', 'm9']) fs.writeFileSync(path.join(localR, 'images', m), `local-${m}`);
+    };
+    writeLocalR();
+    const ri = await smzImport.inspectSmz(smzR);
+    check('inspect: counts the micrographs without an image in the file (a zero-byte entry is none)',
+      ri.success && ri.projectExists === true && ri.micrographCount === 5 && ri.missingImages === 4, JSON.stringify(ri));
+    check('inspect: of those, the images this computer has', ri.keptImages === 2, JSON.stringify(ri));
+
+    const keptFolder = path.join(app.getPath('userData'), 'import-kept-images', R);
+    const img = (m) => path.join(localR, 'images', m);
+    const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null);
+    const rr = await smzImport.importSmz(smzR, () => {});
+    check('replace: succeeds and reports the kept images', rr.success && rr.keptImages === 2,
+      JSON.stringify({ success: rr.success, kept: rr.keptImages, error: rr.error }));
+    check('replace: the file\'s image wins where it has one', read(img('m1')) === 'file-m1', String(read(img('m1'))));
+    check('replace: this computer\'s images kept where the file has none', read(img('m2')) === 'local-m2' && read(img('m3')) === 'local-m3',
+      `${read(img('m2'))} ${read(img('m3'))}`);
+    check('replace: no image where neither has one; nothing kept for a micrograph the file dropped',
+      !fs.existsSync(img('m4')) && !fs.existsSync(img('m9')));
+    check('replace: the holding folder is gone', !fs.existsSync(keptFolder));
+    check('replace: the rest is the file\'s project', readJson(path.join(localR, 'project.json')).name === 'Partial');
+
+    // The import fails after the local copy was deleted: the kept images go back
+    writeLocalR();
+    const realCreate = projectFolders.createProjectFolders;
+    projectFolders.createProjectFolders = async () => { throw new Error('disk full (test)'); };
+    let rf;
+    try {
+      rf = await smzImport.importSmz(smzR, () => {});
+    } finally {
+      projectFolders.createProjectFolders = realCreate;
+    }
+    check('failed replace: reported as failed', rf && !rf.success && /disk full/.test(rf.error || ''), JSON.stringify(rf));
+    check('failed replace: the images moved aside are back', read(img('m2')) === 'local-m2' && read(img('m3')) === 'local-m3',
+      `${read(img('m2'))} ${read(img('m3'))}`);
+    check('failed replace: the holding folder is gone', !fs.existsSync(keptFolder));
+
+    // A file with no images and nothing on this computer: told, nothing kept
+    const S = 'f0a1b2c3-0000-4000-8000-000000000004';
+    const smzS = path.join(tmp, 'noimages.smz');
+    await makeSmz(smzS, withMicrographs(S, 'No images', ['a', 'b']));
+    const ni = await smzImport.inspectSmz(smzS);
+    check('inspect: a fresh file with no images', ni.success && ni.projectExists === false &&
+      ni.micrographCount === 2 && ni.missingImages === 2 && ni.keptImages === 0, JSON.stringify(ni));
+    const nr = await smzImport.importSmz(smzS, () => {});
+    check('fresh import of a file with no images still imports', nr.success && nr.keptImages === 0, JSON.stringify({ success: nr.success, error: nr.error }));
+
+    // Legacy (numeric id): uiImages/<id> counts as the image
+    const L = '17671200000001';
+    const smzL = path.join(tmp, 'legacy.smz');
+    await makeSmz(smzL, withMicrographs(L, 'Legacy', ['17671200000002', '17671200000003']),
+      { 'uiImages/17671200000002': 'ui', 'images/17671200000003': 'orig' });
+    const li = await smzImport.inspectSmz(smzL);
+    check('inspect: a legacy file\'s uiImages count as images', li.success && li.missingImages === 0 && li.micrographCount === 2, JSON.stringify(li));
   } catch (e) {
     failures++;
     console.log('ERROR', e && e.stack);
