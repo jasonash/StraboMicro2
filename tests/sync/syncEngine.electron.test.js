@@ -208,6 +208,37 @@ app.whenReady().then(async () => {
       !Object.values(st.base).some((e) => e.type === 'spot' && deletedIds.includes(e.parentId)));
     compare('after cascade delete', on.pid);
 
+    // An image file lost here (deleted by hand, a replace from a file without
+    // images): the push never unrefs it on the server, which would take it
+    // from every copy, but queues it to be fetched back (Sentry ELECTRON-39)
+    {
+      const { downloadFiles } = require(`${E}/sync/pull`);
+      const victim = micrographs(readLocal().project)[0].id;
+      const imgPath = path.join(accountFolder, 'images', victim);
+      const thumbPath = path.join(accountFolder, 'compositeThumbnails', victim);
+      const imgBytes = fs.readFileSync(imgPath);
+      const before = fixture('assembled', on.pid).refs;
+      fs.rmSync(imgPath);
+      fs.rmSync(thumbPath, { force: true });
+      const lost = await pushProject({ folder: accountFolder, client });
+      check('push with an image and thumbnail missing here: no problem, both queued for download',
+        lost.problems.length === 0 && lost.refetch === 2, JSON.stringify(lost));
+      const after = fixture('assembled', on.pid).refs;
+      check('the server keeps its image, thumbnail and tiles refs', ['image', 'thumbnail', 'tiles'].every((role) =>
+        before[role] && before[role][`micrograph:${victim}`] && after[role][`micrograph:${victim}`] === before[role][`micrograph:${victim}`]),
+      JSON.stringify(['image', 'thumbnail', 'tiles'].map((role) => after[role] && after[role][`micrograph:${victim}`])));
+      const second = await pushProject({ folder: accountFolder, client });
+      check('a second push queues nothing more and removes nothing', second.refetch === 0 &&
+        fixture('assembled', on.pid).refs.image[`micrograph:${victim}`] === before.image[`micrograph:${victim}`], JSON.stringify(second));
+      const got = await downloadFiles({ folder: accountFolder, client });
+      check('the download brings the image back, byte for byte, and the thumbnail', got.downloaded === 2 &&
+        fs.existsSync(imgPath) && fs.readFileSync(imgPath).equals(imgBytes) && fs.existsSync(thumbPath), JSON.stringify(got));
+      const st = await sidecar.loadState(accountFolder);
+      check('nothing left to download', Object.keys(st.downloads || {}).length === 0);
+      const third = await pushProject({ folder: accountFolder, client });
+      check('then a push has nothing to fetch', third.refetch === 0 && third.problems.length === 0);
+    }
+
     // A file ref for a micrograph deleted on the server meanwhile (not pulled yet) is skipped, not retried forever
     const st2 = await sidecar.loadState(accountFolder);
     const doomed = st2.base[`micrograph:${newId}`];

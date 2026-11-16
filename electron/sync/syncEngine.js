@@ -326,10 +326,33 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
       }),
   ];
 
+  // An original or thumbnail the server has but this folder lost (deleted by
+  // hand, a replace from a file without images): fetched back, never
+  // unref'd. Unref'ing it would take the image from every copy of the project
+  // (Sentry ELECTRON-39, 2026-11-16). Waiting to download, its entity's files
+  // are left alone below; the caller runs the download after the push.
+  state.downloads = state.downloads || {};
+  let refetch = 0;
+  for (const key of current.order) {
+    const e = current.entities[key];
+    if (!e || e.type !== 'micrograph' || !state.base[`${e.type}:${e.id}`]) continue;
+    for (const [role, sub] of [['image', 'images'], ['thumbnail', 'compositeThumbnails']]) {
+      const rk = refKey(e.type, e.id, role);
+      const sha = state.refs[rk];
+      if (!sha || state.downloads[rk] || fs.existsSync(path.join(folder, sub, e.id))) continue;
+      state.downloads[rk] = sha;
+      refetch++;
+    }
+  }
+  if (refetch > 0) {
+    log.info(`[Sync] ${refetch} image file(s) missing here are fetched back from the server`);
+    await sidecar.saveState(folder, state);
+  }
+
   // C. Files and refs, for entities the server has. A file waiting to be
   // downloaded (a pull brought a newer one) is neither uploaded nor unref'd,
   // and nor are the other files of its entity (tiles of a missing original)
-  const downloads = state.downloads || {};
+  const downloads = state.downloads;
   const downloading = new Set(Object.keys(downloads).map((rk) => rk.slice(0, rk.indexOf('|'))));
   const tmpDir = path.join(sidecar.syncDir(folder), 'tmp');
   const wanted = new Set();
@@ -426,7 +449,7 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   }
   await sidecar.saveState(folder, state);
   const conflicts = problems.filter((p) => p.result.status === 'conflict' || p.result.status === 'deleted').length;
-  return { pushed, problems, conflicts, filesUploaded, ready, restored };
+  return { pushed, problems, conflicts, filesUploaded, ready, restored, refetch };
 }
 
 /**

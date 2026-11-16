@@ -325,7 +325,7 @@ function push(projectId, restServer, onProgress) {
       }
       return {
         ok: true, pushed: r.pushed, filesUploaded: r.filesUploaded, notAccepted: r.problems.length,
-        conflicts: r.conflicts, restored: r.restored, ready: r.ready,
+        conflicts: r.conflicts, restored: r.restored, ready: r.ready, refetch: r.refetch,
       };
     } catch (err) {
       return failure(err);
