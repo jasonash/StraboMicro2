@@ -360,7 +360,11 @@ interface SyncInvitation {
 type SyncMemberFailure = { ok: false; kind: SyncFailureKind | string; message: string };
 
 type SyncPushResult =
-  | { ok: true; pushed: number; filesUploaded: number; notAccepted: number; conflicts: number; restored: number; ready: boolean }
+  | {
+    ok: true; pushed: number; filesUploaded: number; notAccepted: number; conflicts: number; restored: number; ready: boolean;
+    /** Images or thumbnails the server has but this folder lost: queued for download (never unref'd) */
+    refetch?: number;
+  }
   | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval };
 
 type SyncStatusResult =

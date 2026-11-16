@@ -541,7 +541,8 @@ class ProjectSync {
           result = await api.sync.push(this.projectId, getRestServerUrl());
         }
       }
-      if (result.ok && (pulled || useSyncStore.getState().downloads > 0)) this.startDownloads(api);
+      // A push that found images missing here queued them (fetched back quietly)
+      if (result.ok && (pulled || (result.refetch ?? 0) > 0 || useSyncStore.getState().downloads > 0)) this.startDownloads(api);
     } catch (error) {
       result = { ok: false, kind: 'error', message: error instanceof Error ? error.message : String(error) };
     } finally {
