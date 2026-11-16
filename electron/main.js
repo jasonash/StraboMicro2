@@ -5174,6 +5174,22 @@ ipcMain.handle('project:export-pdf', async (event, projectId, projectData) => {
  * Export project as .smz file
  * Generates all required image variants and packages them with project data
  */
+/**
+ * Micrographs without an image file in the project folder (Export as .smz
+ * warns first; Sentry ELECTRON-39). micrographs: [{ id, name }] from the
+ * open project.
+ */
+ipcMain.handle('project:missing-images', (event, projectId, micrographs) => {
+  try {
+    if (typeof projectId !== 'string' || projectId === '') return [];
+    const { missingImages } = require('./missingImages');
+    return missingImages(projectFolders.getProjectFolderPath(projectId), projectId, micrographs);
+  } catch (error) {
+    log.error('[MissingImages] Check failed:', error);
+    return [];
+  }
+});
+
 ipcMain.handle('project:export-smz', async (event, projectId, projectData) => {
   try {
     log.info('[ExportSMZ] Starting .smz export');

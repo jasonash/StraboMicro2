@@ -13,6 +13,9 @@
  * are listed as a warning but never stop Start Syncing (2026-10-07): live
  * sync sends half-finished work anyway, so refusing only here would not keep
  * the server copy complete.
+ *
+ * Micrographs without an image file here are listed the same way (Sentry
+ * ELECTRON-39): sync would otherwise send them up without an image unseen.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -37,6 +40,7 @@ import { formatBytes } from '@/utils/formatBytes';
 import { useAppStore } from '@/store/useAppStore';
 import { findIncompleteMicrographs } from './IncompleteMicrographsDialog';
 import { incompleteWarning } from '@/utils/incompleteMicrographs';
+import { missingImagesWarning } from '@/utils/missingImages';
 
 interface TurnOnSyncDialogProps {
   open: boolean;
@@ -113,6 +117,7 @@ export function TurnOnSyncDialog({ open, projectId, saveProject, onClose, onStar
   }, [open]);
 
   const why = preflight ? blocker(preflight) : null;
+  const missing = preflight ? missingImagesWarning(preflight.missingImages ?? [], 'sync') : null;
   const canStart = !checking && preflight !== null && preflight.loggedIn && why === null;
 
   return (
@@ -200,6 +205,18 @@ export function TurnOnSyncDialog({ open, projectId, saveProject, onClose, onStar
                 {incomplete.more && <li>{incomplete.more}</li>}
               </Box>
               <Box sx={{ mt: 1 }}>{incomplete.note}</Box>
+            </Alert>
+          )}
+          {missing && (
+            <Alert severity="warning">
+              <AlertTitle sx={{ fontSize: '0.875rem' }}>{missing.title}</AlertTitle>
+              <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                {missing.lines.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+                {missing.more && <li>{missing.more}</li>}
+              </Box>
+              <Box sx={{ mt: 1 }}>{missing.note}</Box>
             </Alert>
           )}
           {error && <Alert severity="error">{error}</Alert>}
