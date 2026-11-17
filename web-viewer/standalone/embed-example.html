@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StraboMicro Viewer: embedding example</title>
+  <!--
+    Example of the StraboMicro Web Viewer inside another site's page, in an
+    iframe. Open it as embed-example.html?p=<project id> (a folder in smzFiles/).
+    The only part a site needs is the <iframe> (see the code shown on the page).
+  -->
+  <style>
+    body { margin: 0; background: #ffffff; color: #222; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .top { background: #3a7d5c; height: 12px; }
+    .page { max-width: 780px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 20px; font-weight: 600; margin: 8px 0 16px; }
+    .result { border-bottom: 1px solid #ddd; padding: 14px 0; }
+    .result h2 { font-size: 15px; margin: 0 0 6px; }
+    .result p { font-size: 13px; color: #555; margin: 6px 0 0; }
+    .preview { font-size: 13px; background: #fff3ef; border: 1px solid #e0754f; color: #222; padding: 3px 10px; cursor: pointer; }
+    .frame { margin-top: 12px; padding-bottom: 12px; border-bottom: 3px solid #1f5c8a; }
+    .frame iframe { width: 100%; height: 540px; border: 1px solid #ccc; display: block; }
+    pre { background: #f4f4f4; border: 1px solid #ddd; padding: 10px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+    .note { font-size: 13px; color: #a33; }
+  </style>
+</head>
+<body>
+  <div class="top"></div>
+  <div class="page">
+    <h1>Example data portal: search results</h1>
+    <p id="missing" class="note" hidden>Add <code>?p=&lt;project id&gt;</code> to this page's address (a project folder in smzFiles/).</p>
+
+    <div class="result">
+      <h2>Microstructure data of an example sample</h2>
+      <button class="preview" id="toggle" type="button" aria-expanded="false">&gt; Preview dataset</button>
+      <p>Example description of the data publication, as a search result shows it...</p>
+      <div class="frame" id="frame" hidden></div>
+    </div>
+
+    <div class="result">
+      <h2>Another data publication</h2>
+      <p>The next search result, to show the break between results.</p>
+    </div>
+
+    <h3>The code for this frame</h3>
+    <pre id="code"></pre>
+  </div>
+
+  <script>
+    const projectId = new URLSearchParams(location.search).get('p') || '';
+    const src = 'view.html?p=' + encodeURIComponent(projectId) + '&layout=compact&theme=light';
+    const iframeHtml = '<iframe src="' + src + '" title="StraboMicro project viewer" width="100%" height="540" style="border: 1px solid #ccc;" loading="lazy"></iframe>';
+    document.getElementById('code').textContent = iframeHtml;
+    if (!projectId) document.getElementById('missing').hidden = false;
+
+    const toggle = document.getElementById('toggle');
+    const frame = document.getElementById('frame');
+    toggle.addEventListener('click', () => {
+      const open = frame.hidden;
+      frame.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.textContent = (open ? '^' : '>') + ' Preview dataset';
+      if (open && !frame.firstChild) frame.innerHTML = iframeHtml;
+    });
+  </script>
+</body>
+</html>

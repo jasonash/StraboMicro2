@@ -13,6 +13,7 @@
     "test:trace-scale-bar": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/traceScaleBar.test.mts",
     "test:chat-text": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/chatText.test.mts",
     "test:spot-framing": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/spotFraming.test.mts",
+    "test:web-viewer-config": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/webViewerConfig.test.mts",
     "test:sibling-placement": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/siblingPlacement.test.mts",
     "test:finish-importing": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/finishImporting.test.mjs",
     "test:incomplete-micrographs": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/incompleteMicrographs.test.mts",

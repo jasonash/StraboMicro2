@@ -342,6 +342,7 @@ export function AssociatedImageRenderer({
   const { x, y, scaleX, scaleY, rotation, offsetX, offsetY, isAffine, transformedWidth, transformedHeight, affineOutlinePoints } = overlayTransform;
   // Micrograph overlay opacity is 0-1 (not 0-100 like spots)
   const opacity = micrograph.opacity ?? 1.0;
+  const mirrored = micrograph.isFlipped === true && !isAffine;
 
   // Get the best available image for current mode
   let displayImage: HTMLImageElement | null = null;
@@ -371,6 +372,12 @@ export function AssociatedImageRenderer({
       onClick={handleClick}
       onTap={handleClick}
     >
+      {/* Mirror for v1 isFlipped (applied to the image before it is placed,
+          as v1 did; affine placements are v2 only and never flipped) */}
+      <Group
+        x={mirrored ? transformedWidth : 0}
+        scaleX={mirrored ? -1 : 1}
+      >
       {/* Single image mode (thumbnail or medium) */}
       {displayImage && !showTiles && (
         <KonvaImage
@@ -414,6 +421,7 @@ export function AssociatedImageRenderer({
           />
         );
       })}
+      </Group>
 
       {/* Outline — Group scaleX is 1/oversample for affine, scaleFactor for non-affine, so
           dividing by it cancels the Group transform and keeps the stroke at a constant ~1px on screen. */}
