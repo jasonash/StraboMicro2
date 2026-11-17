@@ -13,6 +13,11 @@ interface HeaderProps {
   links: ViewerLinks;
   /** The StraboMicro logo and name (config.js showHeader in the standalone build) */
   showLogo: boolean;
+  /** Compact layout: a short bar with a smaller logo */
+  dense?: boolean;
+  /** Compact layout: the Details button opens and closes the details panel */
+  detailsOpen?: boolean;
+  onToggleDetails?: () => void;
 }
 
 function LinkButton({ href, children }: { href: string; children: ReactNode }) {
@@ -23,17 +28,17 @@ function LinkButton({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
-export function Header({ projectName, links, showLogo }: HeaderProps) {
+export function Header({ projectName, links, showLogo, dense = false, detailsOpen = false, onToggleDetails }: HeaderProps) {
 
   return (
-    <AppBar position="static" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-      <Toolbar sx={{ gap: 2 }}>
+    <AppBar position="static" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper', color: 'text.primary' }}>
+      <Toolbar variant={dense ? 'dense' : 'regular'} sx={{ gap: dense ? 1 : 2, ...(dense ? { minHeight: 44, px: 1.5 } : {}) }}>
         {/* Left: Logo and Title */}
         {showLogo && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: -1 }}>
           <img
             src={appIcon}
             alt="StraboMicro Logo"
-            style={{ height: '32px', width: 'auto', borderRadius: '25%' }}
+            style={{ height: dense ? '22px' : '32px', width: 'auto', borderRadius: '25%' }}
           />
           <Typography
             variant="h5"
@@ -42,7 +47,7 @@ export function Header({ projectName, links, showLogo }: HeaderProps) {
               color: 'text.primary',
               fontWeight: 300,
               letterSpacing: 0.5,
-              fontSize: '1.75rem'
+              fontSize: dense ? '1.05rem' : '1.75rem'
             }}>
             STRABOMICRO
           </Typography>
@@ -90,6 +95,17 @@ export function Header({ projectName, links, showLogo }: HeaderProps) {
           {links.pdf && <LinkButton href={links.pdf}>PDF</LinkButton>}
           {links.smz && <LinkButton href={links.smz}>SMZ</LinkButton>}
           {links.share && <LinkButton href={links.share}>Share</LinkButton>}
+          {onToggleDetails && (
+            <Button
+              size="small"
+              variant={detailsOpen ? 'contained' : 'outlined'}
+              color="primary"
+              onClick={onToggleDetails}
+              aria-pressed={detailsOpen}
+            >
+              Details
+            </Button>
+          )}
         </Box>
       </Toolbar>
     </AppBar>

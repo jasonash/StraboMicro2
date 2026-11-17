@@ -113,17 +113,31 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   // FIT TO SCREEN
   // ============================================================================
 
+  // The stage size through a ref, so fitToScreen keeps one identity: a
+  // resize must not restart the image load (it is a dependency of it)
+  const stageSizeRef = useRef(stageSize);
+  stageSizeRef.current = stageSize;
+  // Until the viewer pans or zooms, the image stays fitted when the stage
+  // changes size (window or iframe resized, details panel opened or closed)
+  const viewMovedRef = useRef(false);
+
   const fitToScreen = useCallback((imageWidth: number, imageHeight: number) => {
-    const scaleX = stageSize.width / imageWidth;
-    const scaleY = stageSize.height / imageHeight;
+    const size = stageSizeRef.current;
+    const scaleX = size.width / imageWidth;
+    const scaleY = size.height / imageHeight;
     const newZoom = Math.min(scaleX, scaleY) * 0.95; // 5% padding
 
-    const newX = (stageSize.width - imageWidth * newZoom) / 2;
-    const newY = (stageSize.height - imageHeight * newZoom) / 2;
+    const newX = (size.width - imageWidth * newZoom) / 2;
+    const newY = (size.height - imageHeight * newZoom) / 2;
 
     setZoom(newZoom);
     setPosition({ x: newX, y: newY });
-  }, [stageSize]);
+  }, []);
+
+  useEffect(() => {
+    if (!metadata || viewMovedRef.current) return;
+    fitToScreen(metadata.width, metadata.height);
+  }, [stageSize, metadata, fitToScreen]);
 
   // ============================================================================
   // IMAGE LOADING
@@ -139,6 +153,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
     }
 
     const currentSession = ++sessionRef.current;
+    viewMovedRef.current = false;
 
     const loadImage = async () => {
       setIsLoading(true);
@@ -310,6 +325,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
       y: (pointer.y - position.y) / oldZoom,
     };
 
+    viewMovedRef.current = true;
     setZoom(newZoom);
     setPosition({
       x: pointer.x - mousePointTo.x * newZoom,
@@ -357,6 +373,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
 
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
         hasDraggedRef.current = true;
+        viewMovedRef.current = true;
       }
 
       setPosition({
@@ -435,13 +452,15 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   return (
     <div
       ref={containerRef}
+      // Absolute in its (position: relative) parent: sized by the page, never
+      // by the stage inside it. With width/height 100% the 600 px stage held
+      // a shorter area open, so a short window or iframe never fit the image.
       style={{
-        width: '100%',
-        height: '100%',
+        position: 'absolute',
+        inset: 0,
         overflow: 'hidden',
         backgroundColor: '#1a1a1a',
         cursor: cursorStyle,
-        position: 'relative',
       }}
     >
       {/* Loading overlay */}

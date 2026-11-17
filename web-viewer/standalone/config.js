@@ -24,4 +24,13 @@ window.StraboMicroViewerConfig = {
   // Leave empty for no button.
   // Example: 'https://example.org/microviewer/view.html?p={id}'
   shareUrl: '',
+
+  // Layout: 'auto' (compact when the viewer is narrower than 1000 px, for
+  // example in an iframe), 'full' (three panes) or 'compact'.
+  // A link can choose too: view.html?p=<id>&layout=compact
+  layout: 'auto',
+
+  // Colors: 'dark' or 'light' (for pages with a white background).
+  // A link can choose too: view.html?p=<id>&theme=light
+  theme: 'dark',
 };

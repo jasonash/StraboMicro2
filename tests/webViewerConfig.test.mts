@@ -10,7 +10,11 @@ import {
   cleanProjectId,
   readViewerConfig,
   viewerLinks,
+  chooseLayout,
+  detailsBeside,
   DEFAULT_SMZ_FILES_LOCATION,
+  COMPACT_BELOW_WIDTH,
+  DETAILS_BESIDE_FROM_WIDTH,
 } from '../web-viewer/src/config/viewerConfig.ts';
 
 let failures = 0;
@@ -94,6 +98,28 @@ check('missing id', cleanProjectId(null) === null);
   check('bad types: default location', c.baseUrl === './smzFiles', c.baseUrl);
   check('bad types: default booleans', c.showHeader && c.showFooter, c);
   check('bad types: no SMZ button', viewerLinks(c, '1', false).smz === null);
+}
+
+// --- layout + theme ---
+{
+  const server = readViewerConfig('server', '?p=1', undefined);
+  check('server: full layout, dark by default', server.layout === 'full' && server.theme === 'dark', server);
+  const serverAsked = readViewerConfig('server', '?p=1&layout=compact&theme=light', undefined);
+  check('server: ?layout= ?theme= honored', serverAsked.layout === 'compact' && serverAsked.theme === 'light', serverAsked);
+
+  const plain = readViewerConfig('standalone', '?p=1', undefined);
+  check('standalone: auto layout, dark by default', plain.layout === 'auto' && plain.theme === 'dark', plain);
+  const fromConfig = readViewerConfig('standalone', '?p=1', { layout: 'compact', theme: 'light' });
+  check('standalone: config.js layout + theme', fromConfig.layout === 'compact' && fromConfig.theme === 'light', fromConfig);
+  const linkWins = readViewerConfig('standalone', '?p=1&layout=full&theme=dark', { layout: 'compact', theme: 'light' });
+  check('standalone: the address wins over config.js', linkWins.layout === 'full' && linkWins.theme === 'dark', linkWins);
+  const junk = readViewerConfig('standalone', '?p=1&layout=huge&theme=pink', { layout: 7, theme: 'blue' });
+  check('unknown values fall back', junk.layout === 'auto' && junk.theme === 'dark', junk);
+
+  check('auto: narrow -> compact', chooseLayout('auto', COMPACT_BELOW_WIDTH - 1) === 'compact');
+  check('auto: wide -> full', chooseLayout('auto', COMPACT_BELOW_WIDTH) === 'full');
+  check('fixed layouts ignore width', chooseLayout('full', 300) === 'full' && chooseLayout('compact', 2000) === 'compact');
+  check('details beside from 700', detailsBeside(DETAILS_BESIDE_FROM_WIDTH) && !detailsBeside(DETAILS_BESIDE_FROM_WIDTH - 1));
 }
 
 console.log(`\nweb viewer config: ${passes} passed, ${failures} failed`);

@@ -14,6 +14,15 @@
  */
 
 export type ViewerMode = 'server' | 'standalone';
+/** full = three panes with tabs; compact = for an iframe in someone else's page; auto = by width */
+export type LayoutSetting = 'auto' | 'full' | 'compact';
+export type Layout = 'full' | 'compact';
+export type ThemeSetting = 'dark' | 'light';
+
+/** auto layout: compact when the viewer (the iframe) is narrower than this */
+export const COMPACT_BELOW_WIDTH = 1000;
+/** compact layout: the details panel starts open from this width, and sits beside the image */
+export const DETAILS_BESIDE_FROM_WIDTH = 700;
 
 /** What the deployer may set in config.js. Every field is optional. */
 export interface StandaloneConfigInput {
@@ -23,6 +32,8 @@ export interface StandaloneConfigInput {
   showPdfLink?: unknown;
   smzDownloadUrl?: unknown;
   shareUrl?: unknown;
+  layout?: unknown;
+  theme?: unknown;
 }
 
 export interface ViewerConfig {
@@ -41,6 +52,8 @@ export interface ViewerConfig {
   smzDownloadUrl: string;
   /** Standalone: URL pattern for the Share button, {id} = project folder name; '' = no button */
   shareUrl: string;
+  layout: LayoutSetting;
+  theme: ThemeSetting;
 }
 
 export interface ViewerLinks {
@@ -75,6 +88,14 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function layoutSetting(value: unknown, fallback: LayoutSetting): LayoutSetting {
+  return value === 'auto' || value === 'full' || value === 'compact' ? value : fallback;
+}
+
+function themeSetting(value: unknown, fallback: ThemeSetting): ThemeSetting {
+  return value === 'dark' || value === 'light' ? value : fallback;
+}
+
 function withoutTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
 }
@@ -82,7 +103,9 @@ function withoutTrailingSlash(url: string): string {
 /**
  * Build the configuration from the page address and, for the standalone
  * build, config.js. The standalone build ignores ?base=: the deployer
- * decides where projects come from, not whoever writes a link.
+ * decides where projects come from, not whoever writes a link. ?layout= and
+ * ?theme= are allowed in the address (they only change the look), so one
+ * deployment can serve a full page and an embedded frame.
  */
 export function readViewerConfig(
   mode: ViewerMode,
@@ -102,6 +125,8 @@ export function readViewerConfig(
       showPdfLink: true,
       smzDownloadUrl: '',
       shareUrl: '',
+      layout: layoutSetting(params.get('layout'), 'full'),
+      theme: themeSetting(params.get('theme'), 'dark'),
     };
   }
 
@@ -116,7 +141,20 @@ export function readViewerConfig(
     showPdfLink: bool(input.showPdfLink, true),
     smzDownloadUrl: text(input.smzDownloadUrl),
     shareUrl: text(input.shareUrl),
+    layout: layoutSetting(params.get('layout'), layoutSetting(input.layout, 'auto')),
+    theme: themeSetting(params.get('theme'), themeSetting(input.theme, 'dark')),
   };
+}
+
+/** The layout to draw at this viewer width */
+export function chooseLayout(setting: LayoutSetting, width: number): Layout {
+  if (setting !== 'auto') return setting;
+  return width < COMPACT_BELOW_WIDTH ? 'compact' : 'full';
+}
+
+/** Compact layout: whether the details panel fits beside the image (else it opens over it, closed at first) */
+export function detailsBeside(width: number): boolean {
+  return width >= DETAILS_BESIDE_FROM_WIDTH;
 }
 
 function fillPattern(pattern: string, projectId: string): string | null {

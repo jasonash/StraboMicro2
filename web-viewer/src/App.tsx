@@ -16,7 +16,8 @@ import { BreadcrumbsBar } from './components/BreadcrumbsBar';
 import { SpotsPanel } from './components/SpotsPanel';
 import { Footer } from './components/Footer';
 import { HttpTileLoader } from './services/tileLoader';
-import { readViewerConfig, viewerLinks } from './config/viewerConfig';
+import { viewerLinks, chooseLayout, detailsBeside } from './config/viewerConfig';
+import { viewerConfig } from './config/current';
 import { fileExists } from './services/fileExists';
 import type { ProjectMetadata, MicrographMetadata, SampleMetadata, Spot } from './types/project-types';
 
@@ -24,14 +25,6 @@ import type { ProjectMetadata, MicrographMetadata, SampleMetadata, Spot } from '
 // CONFIGURATION
 // ============================================================================
 
-// Server build: ?base= and ?p= from the address. Standalone build
-// (vite --mode standalone): the deployer's config.js plus ?p=.
-// See src/config/viewerConfig.ts.
-const getViewerConfig = () => readViewerConfig(
-  import.meta.env.MODE === 'standalone' ? 'standalone' : 'server',
-  window.location.search,
-  window.StraboMicroViewerConfig,
-);
 
 // ============================================================================
 // HELPERS
@@ -67,6 +60,17 @@ function findParentSample(project: ProjectMetadata, micrographId: string): Sampl
   return null;
 }
 
+/** The page's width (inside an iframe: the frame's), kept current on resize */
+function useWindowWidth(): number {
+  const [width, setWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return width;
+}
+
 // ============================================================================
 // MAIN APP
 // ============================================================================
@@ -79,8 +83,15 @@ export default function App() {
   const [sidebarTab, setSidebarTab] = useState(0);
 
   const [hasPdf, setHasPdf] = useState(false);
+  const viewerWidth = useWindowWidth();
+  const layout = chooseLayout(viewerConfig.layout, viewerWidth);
+  const beside = detailsBeside(viewerWidth);
+  // Compact layout: the details panel's open state once the viewer has
+  // toggled it; until then it is open when it fits beside the image
+  const [detailsChoice, setDetailsChoice] = useState<boolean | null>(null);
+  const detailsOpen = detailsChoice ?? beside;
 
-  const config = useMemo(() => getViewerConfig(), []);
+  const config = viewerConfig;
   const { projectId, baseUrl } = config;
 
   const tileLoader = useMemo(() => {
@@ -215,6 +226,98 @@ export default function App() {
   // ============================================================================
   // RENDER
   // ============================================================================
+
+  // Compact layout (src/config/viewerConfig.ts chooseLayout): for an iframe
+  // in another site's page, as in the EPOS mockup: micrographs in a narrow
+  // column, the image, and the details panel behind a Details button (beside
+  // the image when it fits, over it otherwise).
+  if (layout === 'compact') {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+        <Header
+          projectName={project.name}
+          links={links}
+          showLogo={config.showHeader}
+          dense
+          detailsOpen={detailsOpen}
+          onToggleDetails={() => setDetailsChoice(!detailsOpen)}
+        />
+
+        <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
+          <Box sx={{
+            width: beside ? 150 : 116,
+            bgcolor: 'background.paper',
+            borderRight: 1,
+            borderColor: 'divider',
+            flexShrink: 0,
+            overflow: 'auto',
+          }}>
+            <ProjectTree
+              project={project}
+              allMicrographs={allMicrographs}
+              activeMicrographId={activeMicrographId}
+              tileLoader={tileLoader}
+              onSelectMicrograph={handleSelectMicrograph}
+            />
+          </Box>
+
+        {/* Canvas area */}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <BreadcrumbsBar
+            micrograph={activeMicrograph}
+            allMicrographs={allMicrographs}
+            selectedSpotName={selectedSpot?.name}
+            onNavigate={handleSelectMicrograph}
+          />
+          <Box sx={{ flex: 1, position: 'relative' }}>
+            <TiledViewer
+              micrographId={activeMicrographId}
+              spots={activeSpots}
+              sketchLayers={activeMicrograph?.sketchLayers}
+              scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter}
+              childMicrographs={childMicrographs}
+              imageWidth={activeMicrograph?.width || activeMicrograph?.imageWidth}
+              imageHeight={activeMicrograph?.height || activeMicrograph?.imageHeight}
+              isFlipped={activeMicrograph?.isFlipped === true}
+              selectedSpotId={selectedSpot?.id || null}
+              tileLoader={tileLoader}
+              onSpotClick={handleSpotClick}
+              onCanvasClick={() => setSelectedSpot(null)}
+              onOverlayClick={handleSelectMicrograph}
+            />
+          </Box>
+        </Box>
+
+
+          {detailsOpen && (
+            <Box sx={{
+              width: beside ? 260 : 'min(300px, 85%)',
+              bgcolor: 'background.paper',
+              borderLeft: 1,
+              borderColor: 'divider',
+              flexShrink: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              ...(beside ? {} : { position: 'absolute', top: 0, right: 0, bottom: 0, zIndex: 2, boxShadow: 6 }),
+            }}>
+          <PropertiesPanel
+            project={project}
+            micrograph={activeMicrograph}
+            spot={selectedSpot}
+            sample={activeSample}
+            allMicrographs={allMicrographs}
+            onDeselectSpot={() => setSelectedSpot(null)}
+            onSelectSpot={handleSpotClick}
+          />
+            </Box>
+          )}
+        </Box>
+
+        {config.showFooter && <Footer appDownloadUrl={links.appDownload} />}
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>

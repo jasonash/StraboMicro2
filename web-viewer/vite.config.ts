@@ -4,11 +4,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const STANDALONE_CONFIG = fileURLToPath(new URL('./standalone/config.js', import.meta.url));
+const EMBED_EXAMPLE = fileURLToPath(new URL('./standalone/embed-example.html', import.meta.url));
 
 /**
  * Standalone build (vite --mode standalone): the page loads the deployer's
  * config.js before the app, the dev server serves standalone/config.js, and
- * the build writes it next to the page (not hashed, so it can be edited).
+ * the build writes it next to the page (not hashed, so it can be edited),
+ * with embed-example.html (the viewer in an iframe on a sample page).
  */
 function standaloneConfig(): Plugin {
   return {
@@ -24,6 +26,7 @@ function standaloneConfig(): Plugin {
     },
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'config.js', source: readFileSync(STANDALONE_CONFIG, 'utf8') });
+      this.emitFile({ type: 'asset', fileName: 'embed-example.html', source: readFileSync(EMBED_EXAMPLE, 'utf8') });
     },
   };
 }

@@ -29,4 +29,4 @@ writeFileSync(
   ].join('\n'),
 );
 
-console.log('Standalone viewer ready in dist-standalone/ (view.html, config.js, assets/, smzFiles/)');
+console.log('Standalone viewer ready in dist-standalone/ (view.html, config.js, embed-example.html, assets/, smzFiles/)');
