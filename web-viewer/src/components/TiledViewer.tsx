@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Stage, Layer, Image as KonvaImage, Circle } from 'react-konva';
+import { Stage, Layer, Group, Image as KonvaImage, Circle } from 'react-konva';
 import Konva from 'konva';
 import { SpotRenderer } from './SpotRenderer';
 import { SketchLayerRenderer } from './SketchLayerRenderer';
@@ -42,6 +42,8 @@ interface TiledViewerProps {
   /** Parent image dimensions (needed for overlay positioning) */
   imageWidth?: number | null;
   imageHeight?: number | null;
+  /** StraboMicro v1 isFlipped: the image is shown mirrored left to right (spots and children are not) */
+  isFlipped?: boolean;
   /** Currently selected spot ID (controlled from parent) */
   selectedSpotId?: string | null;
   tileLoader: HttpTileLoader;
@@ -51,7 +53,7 @@ interface TiledViewerProps {
   onOverlayClick?: (micrographId: string) => void;
 }
 
-export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerCentimeter, childMicrographs, imageWidth, imageHeight, selectedSpotId, tileLoader, onSpotClick, onCanvasClick, onOverlayClick }: TiledViewerProps) {
+export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerCentimeter, childMicrographs, imageWidth, imageHeight, isFlipped, selectedSpotId, tileLoader, onSpotClick, onCanvasClick, onOverlayClick }: TiledViewerProps) {
   // Container sizing
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -81,6 +83,12 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const sessionRef = useRef(0);
+
+  // The micrograph's declared size: a single image (v1 uiImages, no tile
+  // pyramid) is drawn at it, since every coordinate of the project refers to
+  // it. Read through a ref so a new size alone does not reload the image.
+  const declaredSizeRef = useRef({ width: imageWidth, height: imageHeight });
+  declaredSizeRef.current = { width: imageWidth, height: imageHeight };
 
   // ============================================================================
   // CONTAINER RESIZE
@@ -143,8 +151,12 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
 
       try {
         // Step 1: Load metadata
-        const meta = await tileLoader.loadMetadata(micrographId);
+        const loaded = await tileLoader.loadMetadata(micrographId);
         if (currentSession !== sessionRef.current) return;
+        const declared = declaredSizeRef.current;
+        const meta = loaded.singleImage && declared.width && declared.height
+          ? { ...loaded, width: declared.width, height: declared.height }
+          : loaded;
 
         setMetadata(meta);
 
@@ -247,7 +259,8 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
     const TILE_ZOOM_THRESHOLD = 0.5;
 
     // Determine target mode
-    const targetMode = (tilesLoaded && zoom >= TILE_ZOOM_THRESHOLD) ? 'tiled' : 'medium';
+    // A micrograph without a tile pyramid (v1) stays on its single image
+    const targetMode = (tilesLoaded && !metadata.singleImage && zoom >= TILE_ZOOM_THRESHOLD) ? 'tiled' : 'medium';
 
     if (targetMode === renderMode) return;
 
@@ -468,6 +481,11 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
           scaleY={zoom}
           listening={false}
         >
+          {/* Mirror for v1 isFlipped: the image only, never the spots or children */}
+          <Group
+            x={isFlipped && metadata ? metadata.width : 0}
+            scaleX={isFlipped ? -1 : 1}
+          >
           {/* Thumbnail (lowest res, shown first while loading) */}
           {renderMode === 'thumbnail' && thumbnail && metadata && (
             <KonvaImage
@@ -526,6 +544,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
                 />
               );
             })}
+          </Group>
         </Layer>
 
         {/* Associated image overlays — rectangle/affine placements only.

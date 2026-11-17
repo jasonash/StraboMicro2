@@ -339,6 +339,7 @@ export default function App() {
               childMicrographs={childMicrographs}
               imageWidth={activeMicrograph?.width || activeMicrograph?.imageWidth}
               imageHeight={activeMicrograph?.height || activeMicrograph?.imageHeight}
+              isFlipped={activeMicrograph?.isFlipped === true}
               selectedSpotId={selectedSpot?.id || null}
               tileLoader={tileLoader}
               onSpotClick={handleSpotClick}

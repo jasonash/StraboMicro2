@@ -3,6 +3,13 @@
  *
  * Loads tile pyramids and project data from the server via HTTP.
  * Replaces the Electron IPC-based tile loading in the desktop app.
+ *
+ * StraboMicro v1 projects (and anything else without tiles/) have no tile
+ * pyramid. For those the loader serves uiImages/<id> as a one-image pyramid:
+ * loadMetadata describes it (tilesX = tilesY = 0, singleImage), and
+ * loadThumbnail / loadMedium return that image. v1's uiImages copies are the
+ * 2000-2500 px display images every v1 coordinate refers to; images/ (the
+ * originals in local v1 saves) is never read, it would misplace the spots.
  */
 
 export interface TileMetadata {
@@ -19,11 +26,17 @@ export interface TileMetadata {
   /** Affine-only: parent-coord AABB dimensions. Absent on legacy .smz exports — fall back to micrograph.affineTransformedWidth/Height. */
   parentSpaceWidth?: number;
   parentSpaceHeight?: number;
+  /** No tile pyramid: the whole micrograph is one image (uiImages/<id>), drawn at width x height */
+  singleImage?: boolean;
 }
 
 export class HttpTileLoader {
   private baseUrl: string;
   private projectId: string;
+  /** uiImages/<id> loads, one per micrograph, shared by metadata, thumbnail and medium */
+  private singleImages = new Map<string, Promise<HTMLImageElement>>();
+  /** Micrographs known to have no tile pyramid (their metadata.json is missing) */
+  private singleImageIds = new Set<string>();
 
   constructor(baseUrl: string, projectId: string) {
     this.baseUrl = baseUrl.replace(/\/$/, ''); // Remove trailing slash
@@ -43,10 +56,57 @@ export class HttpTileLoader {
    * Load tile metadata for a micrograph
    */
   async loadMetadata(micrographId: string, variant: 'original' | 'affine' = 'original'): Promise<TileMetadata> {
+    if (variant === 'original' && this.singleImageIds.has(micrographId)) {
+      return this.singleImageMetadata(await this.singleImage(micrographId));
+    }
     const url = `${this.baseUrl}/${this.projectId}/${this.pyramidPath(variant)}/${micrographId}/metadata.json`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Failed to load metadata: ${response.status}`);
-    return response.json();
+    const response = await fetch(url).catch(() => null);
+    if (response?.ok) return response.json();
+    const failure = new Error(`Failed to load metadata: ${response?.status ?? 'network error'}`);
+    // Affine pyramids have no single-image form; callers fall back to 'original'
+    if (variant !== 'original') throw failure;
+    let image: HTMLImageElement;
+    try {
+      image = await this.singleImage(micrographId);
+    } catch {
+      throw failure;
+    }
+    this.singleImageIds.add(micrographId);
+    return this.singleImageMetadata(image);
+  }
+
+  private singleImageMetadata(image: HTMLImageElement): TileMetadata {
+    return {
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      tileSize: 0,
+      tilesX: 0,
+      tilesY: 0,
+      totalTiles: 0,
+      singleImage: true,
+    };
+  }
+
+  private singleImage(micrographId: string): Promise<HTMLImageElement> {
+    let image = this.singleImages.get(micrographId);
+    if (!image) {
+      image = this.loadImageFromUrl(`${this.baseUrl}/${this.projectId}/uiImages/${micrographId}`);
+      // Forget a failed load so a later call can try again
+      image.catch(() => this.singleImages.delete(micrographId));
+      this.singleImages.set(micrographId, image);
+    }
+    return image;
+  }
+
+  /** The pyramid's image, or for a micrograph without one, its uiImages copy */
+  private async pyramidImage(url: string, micrographId: string, variant: 'original' | 'affine'): Promise<HTMLImageElement> {
+    if (variant === 'original' && this.singleImageIds.has(micrographId)) return this.singleImage(micrographId);
+    try {
+      return await this.loadImageFromUrl(url);
+    } catch (err) {
+      if (variant !== 'original') throw err;
+      return this.singleImage(micrographId);
+    }
   }
 
   /**
@@ -62,7 +122,7 @@ export class HttpTileLoader {
    */
   async loadMedium(micrographId: string, variant: 'original' | 'affine' = 'original'): Promise<HTMLImageElement> {
     const url = `${this.baseUrl}/${this.projectId}/${this.pyramidPath(variant)}/${micrographId}/medium.jpg`;
-    return this.loadImageFromUrl(url);
+    return this.pyramidImage(url, micrographId, variant);
   }
 
   /**
@@ -70,7 +130,7 @@ export class HttpTileLoader {
    */
   async loadThumbnail(micrographId: string, variant: 'original' | 'affine' = 'original'): Promise<HTMLImageElement> {
     const url = `${this.baseUrl}/${this.projectId}/${this.pyramidPath(variant)}/${micrographId}/thumbnail.jpg`;
-    return this.loadImageFromUrl(url);
+    return this.pyramidImage(url, micrographId, variant);
   }
 
   /**
