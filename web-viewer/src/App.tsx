@@ -14,24 +14,24 @@ import { GroupsPanel } from './components/GroupsPanel';
 import { Header } from './components/Header';
 import { BreadcrumbsBar } from './components/BreadcrumbsBar';
 import { SpotsPanel } from './components/SpotsPanel';
+import { Footer } from './components/Footer';
 import { HttpTileLoader } from './services/tileLoader';
+import { readViewerConfig, viewerLinks } from './config/viewerConfig';
+import { fileExists } from './services/fileExists';
 import type { ProjectMetadata, MicrographMetadata, SampleMetadata, Spot } from './types/project-types';
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 
-// Base URL for project files — configure for your server
-// In development, Vite proxy or a local server can serve the files
-const getBaseUrl = () => {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('base') || './smzFiles';
-};
-
-const getProjectId = () => {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('p') || null;
-};
+// Server build: ?base= and ?p= from the address. Standalone build
+// (vite --mode standalone): the deployer's config.js plus ?p=.
+// See src/config/viewerConfig.ts.
+const getViewerConfig = () => readViewerConfig(
+  import.meta.env.MODE === 'standalone' ? 'standalone' : 'server',
+  window.location.search,
+  window.StraboMicroViewerConfig,
+);
 
 // ============================================================================
 // HELPERS
@@ -78,8 +78,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [sidebarTab, setSidebarTab] = useState(0);
 
-  const projectId = useMemo(() => getProjectId(), []);
-  const baseUrl = useMemo(() => getBaseUrl(), []);
+  const [hasPdf, setHasPdf] = useState(false);
+
+  const config = useMemo(() => getViewerConfig(), []);
+  const { projectId, baseUrl } = config;
 
   const tileLoader = useMemo(() => {
     if (!projectId) return null;
@@ -133,8 +135,16 @@ export default function App() {
 
   useEffect(() => {
     if (!projectId) {
-      setError('No project ID provided. Use ?p=<projectId> in the URL.');
+      setError(new URLSearchParams(window.location.search).get('p')
+        ? 'This project id is not valid. Use ?p=<projectId> in the URL.'
+        : 'No project ID provided. Use ?p=<projectId> in the URL.');
       return;
+    }
+
+    // Standalone: offer project.pdf only when the folder has one (v1 local
+    // saves and failed v2 PDF steps have none)
+    if (config.mode === 'standalone' && config.showPdfLink) {
+      fileExists(`${baseUrl}/${projectId}/project.pdf`).then(setHasPdf);
     }
 
     const loadProject = async () => {
@@ -158,7 +168,12 @@ export default function App() {
     };
 
     loadProject();
-  }, [projectId, baseUrl]);
+  }, [projectId, baseUrl, config]);
+
+  const links = useMemo(
+    () => (projectId ? viewerLinks(config, projectId, hasPdf) : null),
+    [config, projectId, hasPdf],
+  );
 
   // ============================================================================
   // HANDLERS
@@ -187,7 +202,7 @@ export default function App() {
     );
   }
 
-  if (!project || !tileLoader) {
+  if (!project || !tileLoader || !links) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: 'background.default' }}>
         <Typography sx={{
@@ -204,7 +219,7 @@ export default function App() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       {/* Header */}
-      <Header projectName={project.name} tileLoader={tileLoader} />
+      <Header projectName={project.name} links={links} showLogo={config.showHeader} />
 
       {/* Main content */}
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -355,6 +370,8 @@ export default function App() {
           />
         </Box>
       </Box>
+
+      {config.showFooter && <Footer appDownloadUrl={links.appDownload} />}
     </Box>
   );
 }

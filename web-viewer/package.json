@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:standalone": "vite --mode standalone",
     "build": "tsc -b && vite build && mv dist/index.html dist/microviewer.html",
+    "build:standalone": "tsc -b && vite build --mode standalone && node scripts/finish-standalone.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

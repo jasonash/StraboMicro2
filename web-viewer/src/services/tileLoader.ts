@@ -82,51 +82,6 @@ export class HttpTileLoader {
   }
 
   /**
-   * Get the URL for the project PDF.
-   *
-   * Goes through the server endpoint (NOT the static
-   * smzFiles/<id>/project.pdf file): the endpoint regenerates the PDF
-   * with fresh StraboSamples spine values when a Samples-app edit has
-   * marked it dirty. Linking the static file serves the upload-time PDF
-   * forever. Matches the legacy landing page and straboMicroView.
-   */
-  getPdfUrl(): string {
-    return `/download_micro_pdf?project_id=${this.projectId}`;
-  }
-
-  /**
-   * Get the URL for the .smz download
-   */
-  getSmzUrl(): string {
-    return `/download_micro_file?project_id=${this.projectId}`;
-  }
-
-  /**
-   * Get the URL for sharing this project
-   */
-  getShareUrl(): string {
-    return `/share_micro_file?project_id=${this.projectId}`;
-  }
-
-  /**
-   * Get the strabomicro:// deep link that opens this project in the
-   * installed desktop app (StraboMicro >= the release carrying the deep
-   * link handler). Browsers cannot detect whether the app is installed,
-   * so callers must always pair this with the app-download fallback link.
-   */
-  getDeepLinkUrl(): string {
-    return `strabomicro://open?p=${this.projectId}`;
-  }
-
-  /**
-   * Get the URL of the StraboMicro app download page (fallback for users
-   * without the app installed)
-   */
-  getAppDownloadUrl(): string {
-    return '/micro_download.php';
-  }
-
-  /**
    * Load multiple tiles in batch, returning results as they complete
    */
   async loadTilesBatch(

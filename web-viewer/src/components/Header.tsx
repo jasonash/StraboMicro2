@@ -1,24 +1,35 @@
 /**
- * Header — Top bar with logo, project title, and download actions
+ * Header: top bar with logo, project title, and download actions
  * Matches the desktop app's Header styling.
  */
 
 import { AppBar, Toolbar, Typography, Button, Box, Link } from '@mui/material';
-import { HttpTileLoader } from '../services/tileLoader';
+import type { ReactNode } from 'react';
+import type { ViewerLinks } from '../config/viewerConfig';
 import appIcon from '../assets/app-icon.png';
 
 interface HeaderProps {
   projectName: string;
-  tileLoader: HttpTileLoader;
+  links: ViewerLinks;
+  /** The StraboMicro logo and name (config.js showHeader in the standalone build) */
+  showLogo: boolean;
 }
 
-export function Header({ projectName, tileLoader }: HeaderProps) {
+function LinkButton({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <Button size="small" variant="outlined" color="primary" href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </Button>
+  );
+}
+
+export function Header({ projectName, links, showLogo }: HeaderProps) {
 
   return (
     <AppBar position="static" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
       <Toolbar sx={{ gap: 2 }}>
         {/* Left: Logo and Title */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: -1 }}>
+        {showLogo && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: -1 }}>
           <img
             src={appIcon}
             alt="StraboMicro Logo"
@@ -35,7 +46,7 @@ export function Header({ projectName, tileLoader }: HeaderProps) {
             }}>
             STRABOMICRO
           </Typography>
-        </Box>
+        </Box>}
 
         {/* Center spacer + project name */}
         <Typography
@@ -52,62 +63,33 @@ export function Header({ projectName, tileLoader }: HeaderProps) {
 
         {/* Right: Action buttons. Top-aligned so all buttons share one
             baseline; the deep link's fallback caption hangs below its
-            button without pushing it off the row. */}
+            button without pushing it off the row. Each button appears only
+            when its link exists (src/config/viewerConfig.ts viewerLinks). */}
         <Box sx={{ display: 'flex', gap: 1, flexShrink: 0, alignItems: 'flex-start' }}>
-          {/* Deep link into the installed desktop app. Browsers cannot tell
-              whether the app is installed (deliberate anti-fingerprinting),
-              so the button is always shown with a download fallback below.
-              No target="_blank": the browser hands the strabomicro:// URI
-              to the OS without leaving this page. */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mr: 0.5 }}>
-            <Button
-              size="small"
-              variant="outlined"
-              color="primary"
-              href={tileLoader.getDeepLinkUrl()}
-            >
-              Open in StraboMicro
-            </Button>
-            <Link
-              href={tileLoader.getAppDownloadUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              underline="hover"
-              sx={{ fontSize: '0.65rem', lineHeight: 1.4, color: 'text.secondary', mt: 0.25 }}
-            >
-              Don't have StraboMicro? Download it
-            </Link>
-          </Box>
-          <Button
-            size="small"
-            variant="outlined"
-            color="primary"
-            href={tileLoader.getPdfUrl()}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            PDF
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            color="primary"
-            href={tileLoader.getSmzUrl()}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            SMZ
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            color="primary"
-            href={tileLoader.getShareUrl()}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Share
-          </Button>
+          {/* Deep link into the installed desktop app (server build only).
+              Browsers cannot tell whether the app is installed (deliberate
+              anti-fingerprinting), so the button is always shown with a
+              download fallback below. No target="_blank": the browser hands
+              the strabomicro:// URI to the OS without leaving this page. */}
+          {links.openInApp && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mr: 0.5 }}>
+              <Button size="small" variant="outlined" color="primary" href={links.openInApp}>
+                Open in StraboMicro
+              </Button>
+              <Link
+                href={links.appDownload}
+                target="_blank"
+                rel="noopener noreferrer"
+                underline="hover"
+                sx={{ fontSize: '0.65rem', lineHeight: 1.4, color: 'text.secondary', mt: 0.25 }}
+              >
+                Don't have StraboMicro? Download it
+              </Link>
+            </Box>
+          )}
+          {links.pdf && <LinkButton href={links.pdf}>PDF</LinkButton>}
+          {links.smz && <LinkButton href={links.smz}>SMZ</LinkButton>}
+          {links.share && <LinkButton href={links.share}>Share</LinkButton>}
         </Box>
       </Toolbar>
     </AppBar>
