@@ -57,6 +57,7 @@ const MICROGRAPH_CATEGORIES: CategoryOption[] = [
   { id: 'notes', label: 'Notes', modal: 'notes' },
   { id: 'files', label: 'Associated Files', modal: 'files' },
   { id: 'links', label: 'Links', modal: 'links' },
+  { id: 'groups', label: 'Groups', modal: 'groups' },
 ];
 
 const SPOT_CATEGORIES: CategoryOption[] = [
@@ -77,6 +78,7 @@ const SPOT_CATEGORIES: CategoryOption[] = [
   { id: 'notes', label: 'Notes', modal: 'notes' },
   { id: 'files', label: 'Associated Files', modal: 'files' },
   { id: 'links', label: 'Links', modal: 'links' },
+  { id: 'tags', label: 'Tags', modal: 'tags' },
 ];
 
 // Union type for options - can be either a category or a keyword
