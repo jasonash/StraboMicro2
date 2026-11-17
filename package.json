@@ -23,6 +23,7 @@
     "test:polarization": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/polarization.test.mts",
     "test:auto-spot-name": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/autoSpotName.test.mts",
     "test:spot-links": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/spotLinks.test.mts",
+    "test:tags-groups": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/tagsAndGroups.test.mts",
     "test:spot-data-sections": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/spotDataSections.test.mts",
     "test:custom-minerals": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/customMinerals.test.mts",
     "test:spot-stacking": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/spotStacking.test.mts",

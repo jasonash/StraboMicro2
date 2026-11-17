@@ -60,6 +60,8 @@ import {
   isPolygonSpot,
 } from '@/utils/geometryMeasurements';
 import { sectionHasData } from '@/utils/spotDataSections';
+import { tagsOfSpot, groupsOfMicrograph } from '@/utils/tagsAndGroups';
+import { tagSwatchStyle } from '@/utils/tagSwatch';
 
 interface MetadataSummaryProps {
   micrographId?: string;
@@ -702,6 +704,8 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
   const micrograph = micrographId ? findMicrographById(project, micrographId) : undefined;
   const spot = spotId ? findSpotById(project, spotId) : undefined;
   const data = micrograph || spot;
+  const spotTags = tagsOfSpot(project, spot);
+  const micrographGroups = groupsOfMicrograph(project, micrograph?.id);
 
   // Get the parent micrograph for spots
   const spotParentMicrograph = spotId && project ? findSpotParentMicrograph(project, spotId) : undefined;
@@ -1821,6 +1825,89 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                 </Typography>
               ))}
             </Stack>
+          </AccordionDetails>
+        </StyledAccordion>
+      )}
+
+      {/* Tags of a spot (shown when it has some; added through Add Data > Tags). Claire's issue #61 */}
+      {spot && spotTags.length > 0 && (
+        <StyledAccordion
+          expanded={expanded['tags'] || false}
+          onChange={handleExpand('tags')}
+          disableGutters
+          sx={{ '&:before': { display: 'none' } }}
+        >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="subtitle2">Tags</Typography>
+            <Chip label={spotTags.length === 1 ? '1 tag' : `${spotTags.length} tags`} size="small" />
+            <Box sx={{ flexGrow: 1 }} />
+            <Box
+              onClick={handleEdit('tags')}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
+            >
+              <EditIcon fontSize="small" />
+            </Box>
+          </StyledAccordionSummary>
+          <AccordionDetails sx={{ py: 1 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+              {spotTags.map((tag) => (
+                <Chip
+                  key={tag.id}
+                  label={tag.name}
+                  size="small"
+                  icon={<Box sx={{ ...tagSwatchStyle(tag, 12), ml: 1 }} />}
+                />
+              ))}
+            </Box>
+          </AccordionDetails>
+        </StyledAccordion>
+      )}
+
+      {/* Groups of a micrograph (shown when it is in some; added through Add Data > Groups). Claire's issue #61 */}
+      {micrograph && micrographGroups.length > 0 && (
+        <StyledAccordion
+          expanded={expanded['groups'] || false}
+          onChange={handleExpand('groups')}
+          disableGutters
+          sx={{ '&:before': { display: 'none' } }}
+        >
+          <StyledAccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="subtitle2">Groups</Typography>
+            <Chip label={micrographGroups.length === 1 ? '1 group' : `${micrographGroups.length} groups`} size="small" />
+            <Box sx={{ flexGrow: 1 }} />
+            <Box
+              onClick={handleEdit('groups')}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 32,
+                height: 32,
+                mr: 1,
+                cursor: 'pointer',
+                borderRadius: '50%',
+                '&:hover': { bgcolor: 'action.hover' },
+              }}
+            >
+              <EditIcon fontSize="small" />
+            </Box>
+          </StyledAccordionSummary>
+          <AccordionDetails sx={{ py: 1 }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+              {micrographGroups.map((group) => (
+                <Chip key={group.id} label={group.name} size="small" />
+              ))}
+            </Box>
           </AccordionDetails>
         </StyledAccordion>
       )}
