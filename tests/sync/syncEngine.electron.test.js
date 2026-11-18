@@ -239,6 +239,69 @@ app.whenReady().then(async () => {
       check('then a push has nothing to fetch', third.refetch === 0 && third.problems.length === 0);
     }
 
+    // A BMP original (StraboMicro v1 kept them as they were; sharp cannot
+    // read BMP, so every push stopped with "Input file contains unsupported
+    // image format", user report 2026-11-18): the push makes it a PNG of the
+    // same pixels and sends that with its tiles. Then an original nothing
+    // can read: its tiles are skipped, the rest of the push still goes up.
+    {
+      const sharp = require('sharp');
+      const tiled = fixture('assembled', on.pid).refs.tiles || {};
+      const victim = micrographs(readLocal().project).map((m) => m.id).find((id) => tiled[`micrograph:${id}`]);
+      const imgPath = path.join(accountFolder, 'images', victim);
+      const original = fs.readFileSync(imgPath);
+      const { data, info } = await sharp(original).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+      const rowSize = Math.floor((24 * info.width + 31) / 32) * 4;
+      const bmpFile = Buffer.alloc(54 + rowSize * info.height);
+      bmpFile.write('BM', 0, 'ascii');
+      bmpFile.writeUInt32LE(bmpFile.length, 2);
+      bmpFile.writeUInt32LE(54, 10);
+      bmpFile.writeUInt32LE(40, 14);
+      bmpFile.writeInt32LE(info.width, 18);
+      bmpFile.writeInt32LE(-info.height, 22);
+      bmpFile.writeUInt16LE(1, 26);
+      bmpFile.writeUInt16LE(24, 28);
+      for (let y = 0; y < info.height; y++) {
+        for (let x = 0; x < info.width; x++) {
+          const s = (y * info.width + x) * info.channels;
+          const d = 54 + y * rowSize + x * 3;
+          bmpFile[d] = data[s + 2]; bmpFile[d + 1] = data[s + 1]; bmpFile[d + 2] = data[s];
+        }
+      }
+      fs.writeFileSync(imgPath, bmpFile);
+      let bmpPush;
+      try {
+        bmpPush = await pushProject({ folder: accountFolder, client });
+      } catch (err) {
+        bmpPush = { error: err.message };
+      }
+      check('push with a BMP original goes through', bmpPush && !bmpPush.error && bmpPush.problems.length === 0, JSON.stringify(bmpPush).slice(0, 300));
+      const meta = await sharp(imgPath).metadata().catch(() => ({}));
+      check('the BMP original is now a PNG of the same size', meta.format === 'png' && meta.width === info.width && meta.height === info.height, `${meta.format} ${meta.width}x${meta.height}`);
+      const same = await sharp(imgPath).toColourspace('srgb').removeAlpha().raw().toBuffer().then((b) => b.equals(data), () => false);
+      check('the PNG has the same pixels', same);
+      const pngSha = crypto.createHash('sha256').update(fs.readFileSync(imgPath)).digest('hex');
+      const refs = fixture('assembled', on.pid).refs;
+      check('the server has the PNG as the image, and tiles', refs.image[`micrograph:${victim}`] === pngSha && Boolean(refs.tiles[`micrograph:${victim}`]),
+        JSON.stringify([refs.image[`micrograph:${victim}`], pngSha]));
+
+      const tilesBefore = refs.tiles[`micrograph:${victim}`];
+      fs.writeFileSync(imgPath, Buffer.from('not an image at all, not even close'));
+      writeLocal((p) => { micrographs(p)[0].name = 'renamed beside an unreadable original'; });
+      let bad;
+      try {
+        bad = await pushProject({ folder: accountFolder, client });
+      } catch (err) {
+        bad = { error: err.message };
+      }
+      check('an unreadable original does not stop the push', bad && !bad.error && bad.pushed >= 1, JSON.stringify(bad).slice(0, 300));
+      check('its tiles ref on the server is left alone', fixture('assembled', on.pid).refs.tiles[`micrograph:${victim}`] === tilesBefore);
+      fs.writeFileSync(imgPath, original);
+      const back = await pushProject({ folder: accountFolder, client });
+      check('with the original back, the push is clean', back.problems.length === 0, JSON.stringify(back).slice(0, 300));
+      compare('after the BMP original', on.pid);
+    }
+
     // A file ref for a micrograph deleted on the server meanwhile (not pulled yet) is skipped, not retried forever
     const st2 = await sidecar.loadState(accountFolder);
     const doomed = st2.base[`micrograph:${newId}`];

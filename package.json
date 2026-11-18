@@ -44,6 +44,7 @@
     "test:project-serializer": "node tests/projectSerializer.test.js",
     "test:menu-accelerators": "node tests/menuAccelerators.test.js",
     "test:user-images": "electron tests/userImages.electron.test.js",
+    "test:original-images": "electron tests/originalImages.electron.test.js",
     "test:image-load-error": "electron tests/imageLoadError.electron.test.mjs",
     "test:model-download-error": "electron tests/modelDownloadError.electron.test.mjs",
     "test:download-close": "electron tests/downloadClose.electron.test.js",
