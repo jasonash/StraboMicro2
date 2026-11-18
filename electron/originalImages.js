@@ -16,13 +16,12 @@
  *
  * decodeBmp is also the import's BMP decoder (electron/imageConverter.js):
  * bmp-js read the channel masks of a 32-bit BITFIELDS BMP wrongly (a gray
- * BSE image came out red).
+ * BSE image came out red), and of the image stitcher (electron/userImage.js).
  */
 
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
-const log = require('electron-log');
 const { writeFileAtomic } = require('./atomicFile');
 
 /** @param {Buffer} buf */
@@ -195,6 +194,8 @@ function convertBmpOriginals(folder) {
 
 /** @param {string} folder */
 async function convertAll(folder) {
+  // Loaded here: decodeBmp also runs in plain Node (userImage.js, the stitcher tests)
+  const log = require('electron-log');
   const imagesDir = path.join(folder, 'images');
   /** @type {fs.Dirent[]} */
   let entries;

@@ -4,7 +4,8 @@
  *
  * - TIFF: the `tiff` library first (palette colors applied, 16-bit scaled to 8-bit by
  *   tiffPixels.js); sharp/libvips for the variants that library refuses.
- * - BMP: bmp-js (libvips has no BMP reader).
+ * - BMP: originalImages.decodeBmp (libvips has no BMP reader; bmp-js turned 32-bit BITFIELDS
+ *   BMPs red).
  * - Everything else: sharp reads the file itself (a JPEG is then shrunk while decoding).
  *
  * Used by the image stitcher, which reads each tile twice: once for a small preview copy and
@@ -14,7 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
-const bmp = require('bmp-js');
+const { decodeBmp } = require('./originalImages');
 const { tiffImageTo8Bit } = require('./tiffPixels');
 const { USER_IMAGE_INPUT } = require('./sharpInput');
 
@@ -57,19 +58,11 @@ async function openUserImage(inputPath) {
       };
     }
   } else if (ext === '.bmp') {
-    const bmpData = bmp.decode(await fs.promises.readFile(inputPath));
-    const { width, height } = bmpData;
-    // bmp-js gives ABGR
-    const rgb = Buffer.alloc(width * height * 3);
-    for (let i = 0; i < width * height; i++) {
-      rgb[i * 3] = bmpData.data[i * 4 + 3];
-      rgb[i * 3 + 1] = bmpData.data[i * 4 + 2];
-      rgb[i * 3 + 2] = bmpData.data[i * 4 + 1];
-    }
+    const { width, height, channels, data } = await decodeBmp(await fs.promises.readFile(inputPath));
     return {
       width,
       height,
-      image: () => sharp(rgb, { raw: { width, height, channels: 3 }, limitInputPixels: false }),
+      image: () => sharp(data, { raw: { width, height, channels }, limitInputPixels: false }),
     };
   }
 
