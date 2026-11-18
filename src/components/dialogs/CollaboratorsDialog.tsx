@@ -226,7 +226,9 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave, onDelet
   };
 
   return (
-    <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
+    // data-sync-continues: no project data is edited here, so sync keeps running
+    // (the first upload this dialog may be waiting for included)
+    <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth data-sync-continues="">
       <DialogTitle>Collaborators</DialogTitle>
       <DialogContent>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
