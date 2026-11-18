@@ -360,7 +360,7 @@ export function NewProjectDialog({ isOpen, onClose, onInviteCollaborators }: New
         {onInviteCollaborators && (
           <Button
             onClick={() => void handleCreate(true)}
-            variant="outlined"
+            variant="contained"
             disabled={!canCreate || keep !== 'sync'}
           >
             Create and Invite Collaborators...
