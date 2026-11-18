@@ -1169,6 +1169,10 @@ async function importSmz(smzPath, progressCallback, { asCopy = false, shareCode 
     log.info(`[SmzImport] Loading project data...`);
     sendProgress('Loading project', 93, 'Reading project data...');
 
+    // The file in the app's own form before anything compares it with the
+    // server (sync adopt, link, pull): a v1 file differs from the server's
+    // copy only in form, and every entity would be a conflict
+    await projectSerializer.rewriteInAppFormat(folderPaths.projectJson);
     const projectData = await projectSerializer.loadProjectJson(projectId);
     if (projectId !== archiveId) {
       projectData.id = projectId;
