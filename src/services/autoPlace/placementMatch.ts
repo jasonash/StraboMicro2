@@ -208,7 +208,7 @@ export function fromMat(mat: Mat): GrayImage {
 
 // ---------------------------------------------------------------- features
 
-interface Features {
+export interface Features {
   /** x, y per keypoint */
   pts: Float32Array;
   /** 1 where the keypoint sits on burned-in graphics (pure black and white, like a scale bar) */
@@ -217,9 +217,11 @@ interface Features {
   count: number;
   width: number;
   height: number;
+  /** Where burned-in graphics may be: rectangles around flat black or white areas, in the image's pixels (candidates, see graphicRectsOf) */
+  graphicRects?: Rect[];
 }
 
-function freeFeatures(f: Features) {
+export function freeFeatures(f: Features) {
   f.descriptors.delete();
 }
 
@@ -259,6 +261,73 @@ function graphicsMask(cv: OpenCV, raw: Mat): Mat {
   return mask;
 }
 
+/** Most rectangles reported per image */
+const GRAPHIC_RECTS_MOST = 24;
+
+/**
+ * Rectangles around what may be burned-in graphics of an image, from its graphics mask (one byte
+ * per pixel, not 0 = graphics). Pure. Candidates only: flat black or white rock (a grain at
+ * extinction, a hole) is in the mask too; the image stitcher keeps those that repeat at the same
+ * place in several images (stitchMatch.ts sharedGraphics). Mask pixels are gathered in cells, touching cells make one
+ * piece, and each piece worth reporting gives its bounding rectangle: a piece must be at least
+ * 3% of the image's long side long (specks are not scale bars) and may not cover more than a
+ * fifth of the image (that is dark or blown-out rock, not a label). Largest first.
+ */
+export function graphicRectsOf(mask: Uint8Array, width: number, height: number): Rect[] {
+  const cell = Math.max(4, Math.round(Math.max(width, height) / 128));
+  const cols = Math.ceil(width / cell);
+  const rows = Math.ceil(height / cell);
+  const on = new Uint8Array(cols * rows);
+  for (let y = 0; y < height; y++) {
+    const r = Math.floor(y / cell) * cols;
+    const row = y * width;
+    for (let x = 0; x < width; x++) if (mask[row + x]) on[r + Math.floor(x / cell)] = 1;
+  }
+  const rects: Array<Rect & { cells: number }> = [];
+  const seen = new Uint8Array(cols * rows);
+  for (let start = 0; start < on.length; start++) {
+    if (!on[start] || seen[start]) continue;
+    let c0 = cols;
+    let c1 = -1;
+    let r0 = rows;
+    let r1 = -1;
+    let cells = 0;
+    const todo = [start];
+    seen[start] = 1;
+    while (todo.length) {
+      const at = todo.pop()!;
+      const c = at % cols;
+      const r = (at - c) / cols;
+      cells++;
+      if (c < c0) c0 = c;
+      if (c > c1) c1 = c;
+      if (r < r0) r0 = r;
+      if (r > r1) r1 = r;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nc = c + dc;
+          const nr = r + dr;
+          if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+          const n = nr * cols + nc;
+          if (on[n] && !seen[n]) {
+            seen[n] = 1;
+            todo.push(n);
+          }
+        }
+      }
+    }
+    const x = c0 * cell;
+    const y = r0 * cell;
+    const w = Math.min(width, (c1 + 1) * cell) - x;
+    const h = Math.min(height, (r1 + 1) * cell) - y;
+    if (Math.max(w, h) < 0.03 * Math.max(width, height)) continue;
+    if (w * h > 0.2 * width * height) continue;
+    rects.push({ x, y, width: w, height: h, cells });
+  }
+  rects.sort((a, b) => b.cells - a.cells);
+  return rects.slice(0, GRAPHIC_RECTS_MOST).map(({ x, y, width: w, height: h }) => ({ x, y, width: w, height: h }));
+}
+
 /** Indexes of at most cap keypoints, the strongest of each cell of a 16 x 16 grid, spread evenly */
 function spreadStrongest(xs: Float32Array, responses: Float32Array, width: number, height: number, cap: number): number[] {
   const count = responses.length;
@@ -287,7 +356,8 @@ function spreadStrongest(xs: Float32Array, responses: Float32Array, width: numbe
   return keep;
 }
 
-function findFeatures(cv: OpenCV, raw: Mat, cap: number): Features {
+/** Features of a gray image (also used by the image stitcher, src/services/stitch) */
+export function findFeatures(cv: OpenCV, raw: Mat, cap: number): Features {
   const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
   const eq = new cv.Mat();
   clahe.apply(raw, eq);
@@ -327,9 +397,10 @@ function findFeatures(cv: OpenCV, raw: Mat, cap: number): Features {
     kept.set(descriptors.data.subarray(k * bytes, (k + 1) * bytes), i * bytes);
   });
   descriptors.delete();
+  const graphicRects = graphicRectsOf(mask.data, raw.cols, raw.rows);
   mask.delete();
   const limited = cv.matFromArray(count, bytes, cv.CV_8U, Array.from(kept));
-  return { pts, graphic, descriptors: limited, count, width: raw.cols, height: raw.rows };
+  return { pts, graphic, descriptors: limited, count, width: raw.cols, height: raw.rows, graphicRects };
 }
 
 function graphicShare(f: Features): number {
@@ -348,17 +419,19 @@ export interface Pairs {
   graphic: number[];
 }
 
-function matchFeatures(cv: OpenCV, d: Features, p: Features, keepGraphics: boolean): Pairs {
+export function matchFeatures(cv: OpenCV, d: Features, p: Features, keepGraphics: boolean): Pairs {
   const pairs: Pairs = { src: [], dst: [], graphic: [] };
   if (d.count < 3 || p.count < 3) return pairs;
   const matcher = new cv.BFMatcher(cv.NORM_HAMMING);
   const knn = new cv.DMatchVectorVector();
   matcher.knnMatch(d.descriptors, p.descriptors, knn, 2);
   for (let i = 0; i < knn.size(); i++) {
+    // get() hands out a copy that lives in the OpenCV memory until it is deleted
     const two = knn.get(i);
-    if (two.size() < 2) continue;
-    const best = two.get(0);
-    if (best.distance >= RATIO * two.get(1).distance) continue;
+    const best = two.size() < 2 ? null : two.get(0);
+    const isClear = best !== null && best.distance < RATIO * two.get(1).distance;
+    two.delete();
+    if (!best || !isClear) continue;
     const qi = best.queryIdx;
     const ti = best.trainIdx;
     if (!keepGraphics && d.graphic[qi] && p.graphic[ti]) continue;
@@ -378,7 +451,7 @@ export interface Fit {
   n: number;
 }
 
-function fitAffine(cv: OpenCV, pairs: Pairs): Fit | null {
+export function fitAffine(cv: OpenCV, pairs: Pairs): Fit | null {
   const count = pairs.src.length / 2;
   if (count < 6) return null;
   const a = cv.matFromArray(count, 1, cv.CV_32FC2, pairs.src);

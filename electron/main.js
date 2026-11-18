@@ -248,6 +248,8 @@ const syncSidecar = require('./sync/sidecar');
 const fastsamService = require('./fastsamService');
 // Grain Spot model (SAM 2.1 tiny): download and bytes for the renderer
 require('./grainSpotModel').registerIpc(ipcMain);
+// Image stitcher: preview copies of the chosen images, the mosaic build
+require('./stitchService').registerIpc(ipcMain);
 const straboToolsMain = require('./straboToolsMain');
 const dialogDirs = require('./dialogDirs');
 const customUserDataFiles = require('./customUserDataFiles');
@@ -963,6 +965,14 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:image-comparator');
+            }
+          }
+        },
+        {
+          label: 'Image Stitcher...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:image-stitcher');
             }
           }
         },
@@ -1718,9 +1728,11 @@ function createWindow() {
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
 
-    // Open DevTools automatically in development (not for a background e2e
-    // copy: the detached DevTools window would take focus)
-    if (!E2E_BACKGROUND) mainWindow.webContents.once('did-finish-load', () => {
+    // Open DevTools automatically in development. Not for an e2e copy: the
+    // detached DevTools window takes focus (background runs) and covers the
+    // app (watch mode, micro-e2e). E2E_DEVTOOLS=1 opens it for a visible copy.
+    const wantsDevTools = E2E_DIR ? (!E2E_BACKGROUND && process.env.E2E_DEVTOOLS === '1') : true;
+    if (wantsDevTools) mainWindow.webContents.once('did-finish-load', () => {
       log.info('Page loaded, opening DevTools...');
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     });
@@ -1915,6 +1927,15 @@ app.on('before-quit', () => {
   log.info('[App] before-quit event - setting isQuitting flag');
   isQuitting = true;
   autoUpdaterModule.cleanup();
+});
+
+// A window's page or a helper process ended on its own: main.log says why (crashed, out of
+// memory, killed), which nothing else records
+app.on('render-process-gone', (event, webContents, details) => {
+  log.error(`[Main] A window's page ended: ${details.reason} (exit code ${details.exitCode})`);
+});
+app.on('child-process-gone', (event, details) => {
+  if (details.reason !== 'clean-exit') log.error(`[Main] A ${details.type} process ended: ${details.reason} (exit code ${details.exitCode})`);
 });
 
 app.on('window-all-closed', () => {
