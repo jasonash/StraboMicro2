@@ -138,6 +138,8 @@ type SyncPreflightResult =
     ok: true;
     /** Originals and other files (tiles not counted) */
     bytes: number;
+    /** Micrographs without an image file in the folder (the dialog warns) */
+    missingImages: Array<{ id: string; name: string }>;
     loggedIn: boolean;
     /** Why the server cannot take it now (offline, disabled, ...) */
     problem: { kind: SyncFailureKind; message: string } | null;
@@ -360,7 +362,11 @@ interface SyncInvitation {
 type SyncMemberFailure = { ok: false; kind: SyncFailureKind | string; message: string };
 
 type SyncPushResult =
-  | { ok: true; pushed: number; filesUploaded: number; notAccepted: number; conflicts: number; restored: number; ready: boolean }
+  | {
+    ok: true; pushed: number; filesUploaded: number; notAccepted: number; conflicts: number; restored: number; ready: boolean;
+    /** Images or thumbnails the server has but this folder lost: queued for download (never unref'd) */
+    refetch?: number;
+  }
   | { ok: false; kind: SyncFailureKind; message: string; removal?: SyncRemoval };
 
 type SyncStatusResult =
@@ -1014,6 +1020,8 @@ interface Window {
     onExportSmz: (callback: () => void) => Unsubscribe;
 
     // Export as .smz
+    /** Micrographs without an image file in the project folder (Export as .smz warns first) */
+    missingImages: (projectId: string, micrographs: Array<{ id: string; name: string }>) => Promise<Array<{ id: string; name: string }>>;
     exportSmz: (projectId: string, projectData: any) => Promise<{
       success: boolean;
       canceled?: boolean;
@@ -1123,6 +1131,8 @@ interface Window {
         success: boolean;
         projectId?: string;
         projectData?: any;
+        /** Images of this computer's copy kept because the file had none for them */
+        keptImages?: number;
         error?: string;
       }>;
       // Progress updates during import
@@ -1399,6 +1409,7 @@ interface Window {
     // Tools menu events
     onPointCount: (callback: () => void) => Unsubscribe;
     onGrainDetection: (callback: () => void) => Unsubscribe;
+    onImageStitcher: (callback: () => void) => Unsubscribe;
     onImageComparator: (callback: () => void) => Unsubscribe;
     onCustomUserData: (callback: () => void) => Unsubscribe;
     onGrainSizeAnalysis: (callback: () => void) => Unsubscribe;
@@ -1428,6 +1439,50 @@ interface Window {
     };
     onConfigureMineralColors: (callback: () => void) => Unsubscribe;
     onSpotColorMode: (callback: (mode: 'spot-color' | 'mineral-color') => void) => Unsubscribe;
+
+    // Image stitcher (electron/stitchService.js). A session is one run of the wizard.
+    stitch: {
+      machine: () => Promise<{ processors: number; memoryGb: number }>;
+      /** Checks one chosen image and makes its small preview copy (long side at most 2048 px) */
+      prepare: (session: string, index: number, imagePath: string) => Promise<
+        | { ok: true; width: number; height: number; previewPath: string; previewWidth: number; previewHeight: number; thumbnail: string }
+        | { ok: false; error: string }
+      >;
+      build: (session: string, job: {
+        tiles: Array<{
+          path: string;
+          width: number;
+          height: number;
+          /** Tile pixel -> mosaic pixel */
+          matrix: [number, number, number, number, number, number];
+          /** Areas (tile pixels) used only where no other tile covers */
+          masks?: Array<{ x: number; y: number; width: number; height: number }>;
+        }>;
+        width: number;
+        height: number;
+        crop?: { left: number; top: number; width: number; height: number };
+        fill?: [number, number, number];
+      }) => Promise<{ success: boolean; cancelled?: boolean; error?: string; path?: string; width?: number; height?: number }>;
+      cancelBuild: (session: string) => Promise<void>;
+      /** done and total are rows of the mosaic */
+      onBuildProgress: (callback: (progress: { session: string; done: number; total: number }) => void) => Unsubscribe;
+      saveAs: (session: string, outputPath: string, format: 'jpeg' | 'png' | 'tiff' | 'tiff-plain') => Promise<{ success: boolean; error?: string; path?: string }>;
+      /** A prepared image's preview copy as JPEG bytes, long side at most maxSide */
+      preview: (session: string, index: number, maxSide: number) => Promise<Uint8Array>;
+      /** Folder picker; every supported image directly in the chosen folder */
+      chooseFolder: () => Promise<{ canceled: boolean; folder?: string; paths: string[] }>;
+      /** Save dialog, then the built mosaic as JPEG, PNG or TIFF by the name chosen */
+      saveWithDialog: (session: string, defaultName: string) => Promise<{ success: boolean; canceled?: boolean; error?: string; path?: string }>;
+      /**
+       * The built mosaic leaves the session as a lossless "<name>.tif" for the import to take.
+       * importFactor: imported width / mosaic width (the import enlarges narrow images).
+       */
+      handOver: (session: string, name: string) => Promise<{ success: boolean; error?: string; path?: string; fileName?: string; width?: number; height?: number; importFactor?: number }>;
+      /** Save dialog for a handed-over mosaic */
+      saveHandedWithDialog: (filePath: string, defaultName: string) => Promise<{ success: boolean; canceled?: boolean; error?: string; path?: string }>;
+      discardHanded: (filePath: string) => Promise<void>;
+      cleanup: (session: string) => Promise<void>;
+    };
 
     // Grain Spot model (SAM 2.1 tiny, fp32 encoder + int8 decoder; electron/grainSpotModel.js)
     grainSpot: {
@@ -1641,6 +1696,12 @@ interface SmzInspectResult {
   projectExists?: boolean;
   /** The logged-in (else last) account has a synced copy (never replaced) */
   syncedCopy?: boolean;
+  /** Micrographs in the file */
+  micrographCount?: number;
+  /** Micrographs the file has no image for */
+  missingImages?: number;
+  /** Of those, how many have an image in the local-only copy a replace keeps */
+  keptImages?: number;
   error?: string;
 }
 

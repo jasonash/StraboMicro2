@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Stage, Layer, Image as KonvaImage, Circle } from 'react-konva';
+import { Stage, Layer, Group, Image as KonvaImage, Circle } from 'react-konva';
 import Konva from 'konva';
 import { SpotRenderer } from './SpotRenderer';
 import { SketchLayerRenderer } from './SketchLayerRenderer';
@@ -42,6 +42,8 @@ interface TiledViewerProps {
   /** Parent image dimensions (needed for overlay positioning) */
   imageWidth?: number | null;
   imageHeight?: number | null;
+  /** StraboMicro v1 isFlipped: the image is shown mirrored left to right (spots and children are not) */
+  isFlipped?: boolean;
   /** Currently selected spot ID (controlled from parent) */
   selectedSpotId?: string | null;
   tileLoader: HttpTileLoader;
@@ -51,7 +53,7 @@ interface TiledViewerProps {
   onOverlayClick?: (micrographId: string) => void;
 }
 
-export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerCentimeter, childMicrographs, imageWidth, imageHeight, selectedSpotId, tileLoader, onSpotClick, onCanvasClick, onOverlayClick }: TiledViewerProps) {
+export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerCentimeter, childMicrographs, imageWidth, imageHeight, isFlipped, selectedSpotId, tileLoader, onSpotClick, onCanvasClick, onOverlayClick }: TiledViewerProps) {
   // Container sizing
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -82,6 +84,12 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   const [loadingMessage, setLoadingMessage] = useState('');
   const sessionRef = useRef(0);
 
+  // The micrograph's declared size: a single image (v1 uiImages, no tile
+  // pyramid) is drawn at it, since every coordinate of the project refers to
+  // it. Read through a ref so a new size alone does not reload the image.
+  const declaredSizeRef = useRef({ width: imageWidth, height: imageHeight });
+  declaredSizeRef.current = { width: imageWidth, height: imageHeight };
+
   // ============================================================================
   // CONTAINER RESIZE
   // ============================================================================
@@ -105,17 +113,31 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   // FIT TO SCREEN
   // ============================================================================
 
+  // The stage size through a ref, so fitToScreen keeps one identity: a
+  // resize must not restart the image load (it is a dependency of it)
+  const stageSizeRef = useRef(stageSize);
+  stageSizeRef.current = stageSize;
+  // Until the viewer pans or zooms, the image stays fitted when the stage
+  // changes size (window or iframe resized, details panel opened or closed)
+  const viewMovedRef = useRef(false);
+
   const fitToScreen = useCallback((imageWidth: number, imageHeight: number) => {
-    const scaleX = stageSize.width / imageWidth;
-    const scaleY = stageSize.height / imageHeight;
+    const size = stageSizeRef.current;
+    const scaleX = size.width / imageWidth;
+    const scaleY = size.height / imageHeight;
     const newZoom = Math.min(scaleX, scaleY) * 0.95; // 5% padding
 
-    const newX = (stageSize.width - imageWidth * newZoom) / 2;
-    const newY = (stageSize.height - imageHeight * newZoom) / 2;
+    const newX = (size.width - imageWidth * newZoom) / 2;
+    const newY = (size.height - imageHeight * newZoom) / 2;
 
     setZoom(newZoom);
     setPosition({ x: newX, y: newY });
-  }, [stageSize]);
+  }, []);
+
+  useEffect(() => {
+    if (!metadata || viewMovedRef.current) return;
+    fitToScreen(metadata.width, metadata.height);
+  }, [stageSize, metadata, fitToScreen]);
 
   // ============================================================================
   // IMAGE LOADING
@@ -131,6 +153,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
     }
 
     const currentSession = ++sessionRef.current;
+    viewMovedRef.current = false;
 
     const loadImage = async () => {
       setIsLoading(true);
@@ -143,8 +166,12 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
 
       try {
         // Step 1: Load metadata
-        const meta = await tileLoader.loadMetadata(micrographId);
+        const loaded = await tileLoader.loadMetadata(micrographId);
         if (currentSession !== sessionRef.current) return;
+        const declared = declaredSizeRef.current;
+        const meta = loaded.singleImage && declared.width && declared.height
+          ? { ...loaded, width: declared.width, height: declared.height }
+          : loaded;
 
         setMetadata(meta);
 
@@ -247,7 +274,8 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
     const TILE_ZOOM_THRESHOLD = 0.5;
 
     // Determine target mode
-    const targetMode = (tilesLoaded && zoom >= TILE_ZOOM_THRESHOLD) ? 'tiled' : 'medium';
+    // A micrograph without a tile pyramid (v1) stays on its single image
+    const targetMode = (tilesLoaded && !metadata.singleImage && zoom >= TILE_ZOOM_THRESHOLD) ? 'tiled' : 'medium';
 
     if (targetMode === renderMode) return;
 
@@ -297,6 +325,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
       y: (pointer.y - position.y) / oldZoom,
     };
 
+    viewMovedRef.current = true;
     setZoom(newZoom);
     setPosition({
       x: pointer.x - mousePointTo.x * newZoom,
@@ -344,6 +373,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
 
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
         hasDraggedRef.current = true;
+        viewMovedRef.current = true;
       }
 
       setPosition({
@@ -422,13 +452,15 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
   return (
     <div
       ref={containerRef}
+      // Absolute in its (position: relative) parent: sized by the page, never
+      // by the stage inside it. With width/height 100% the 600 px stage held
+      // a shorter area open, so a short window or iframe never fit the image.
       style={{
-        width: '100%',
-        height: '100%',
+        position: 'absolute',
+        inset: 0,
         overflow: 'hidden',
         backgroundColor: '#1a1a1a',
         cursor: cursorStyle,
-        position: 'relative',
       }}
     >
       {/* Loading overlay */}
@@ -468,6 +500,11 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
           scaleY={zoom}
           listening={false}
         >
+          {/* Mirror for v1 isFlipped: the image only, never the spots or children */}
+          <Group
+            x={isFlipped && metadata ? metadata.width : 0}
+            scaleX={isFlipped ? -1 : 1}
+          >
           {/* Thumbnail (lowest res, shown first while loading) */}
           {renderMode === 'thumbnail' && thumbnail && metadata && (
             <KonvaImage
@@ -526,6 +563,7 @@ export function TiledViewer({ micrographId, spots, sketchLayers, scalePixelsPerC
                 />
               );
             })}
+          </Group>
         </Layer>
 
         {/* Associated image overlays — rectangle/affine placements only.

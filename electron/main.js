@@ -248,6 +248,8 @@ const syncSidecar = require('./sync/sidecar');
 const fastsamService = require('./fastsamService');
 // Grain Spot model (SAM 2.1 tiny): download and bytes for the renderer
 require('./grainSpotModel').registerIpc(ipcMain);
+// Image stitcher: preview copies of the chosen images, the mosaic build
+require('./stitchService').registerIpc(ipcMain);
 const straboToolsMain = require('./straboToolsMain');
 const dialogDirs = require('./dialogDirs');
 const customUserDataFiles = require('./customUserDataFiles');
@@ -963,6 +965,14 @@ function createWindow() {
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('menu:image-comparator');
+            }
+          }
+        },
+        {
+          label: 'Image Stitcher...',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.webContents.send('menu:image-stitcher');
             }
           }
         },
@@ -1718,9 +1728,11 @@ function createWindow() {
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
 
-    // Open DevTools automatically in development (not for a background e2e
-    // copy: the detached DevTools window would take focus)
-    if (!E2E_BACKGROUND) mainWindow.webContents.once('did-finish-load', () => {
+    // Open DevTools automatically in development. Not for an e2e copy: the
+    // detached DevTools window takes focus (background runs) and covers the
+    // app (watch mode, micro-e2e). E2E_DEVTOOLS=1 opens it for a visible copy.
+    const wantsDevTools = E2E_DIR ? (!E2E_BACKGROUND && process.env.E2E_DEVTOOLS === '1') : true;
+    if (wantsDevTools) mainWindow.webContents.once('did-finish-load', () => {
       log.info('Page loaded, opening DevTools...');
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     });
@@ -1915,6 +1927,15 @@ app.on('before-quit', () => {
   log.info('[App] before-quit event - setting isQuitting flag');
   isQuitting = true;
   autoUpdaterModule.cleanup();
+});
+
+// A window's page or a helper process ended on its own: main.log says why (crashed, out of
+// memory, killed), which nothing else records
+app.on('render-process-gone', (event, webContents, details) => {
+  log.error(`[Main] A window's page ended: ${details.reason} (exit code ${details.exitCode})`);
+});
+app.on('child-process-gone', (event, details) => {
+  if (details.reason !== 'clean-exit') log.error(`[Main] A ${details.type} process ended: ${details.reason} (exit code ${details.exitCode})`);
 });
 
 app.on('window-all-closed', () => {
@@ -4212,6 +4233,12 @@ ipcMain.handle('project:save-json', async (event, project, projectId) => {
 ipcMain.handle('project:load-json', async (event, projectId) => {
   try {
     log.info(`[IPC] Loading project.json for: ${projectId}`);
+    // v1 BMP originals become PNG once: sharp cannot read BMP (tiles, sync, export)
+    try {
+      await require('./originalImages').convertBmpOriginals(projectFolders.getProjectFolderPaths(projectId).projectPath);
+    } catch (err) {
+      log.error('[IPC] Converting BMP originals failed:', err);
+    }
     const project = await projectSerializer.loadProjectJson(projectId);
     log.info('[IPC] Successfully loaded project.json');
     return project;
@@ -5174,6 +5201,22 @@ ipcMain.handle('project:export-pdf', async (event, projectId, projectData) => {
  * Export project as .smz file
  * Generates all required image variants and packages them with project data
  */
+/**
+ * Micrographs without an image file in the project folder (Export as .smz
+ * warns first; Sentry ELECTRON-39). micrographs: [{ id, name }] from the
+ * open project.
+ */
+ipcMain.handle('project:missing-images', (event, projectId, micrographs) => {
+  try {
+    if (typeof projectId !== 'string' || projectId === '') return [];
+    const { missingImages } = require('./missingImages');
+    return missingImages(projectFolders.getProjectFolderPath(projectId), projectId, micrographs);
+  } catch (error) {
+    log.error('[MissingImages] Check failed:', error);
+    return [];
+  }
+});
+
 ipcMain.handle('project:export-smz', async (event, projectId, projectData) => {
   try {
     log.info('[ExportSMZ] Starting .smz export');

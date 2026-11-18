@@ -493,6 +493,10 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('menu:export-smz', callback);
   },
 
+  // Micrographs without an image file here (warned before export)
+  missingImages: (projectId, micrographs) =>
+    ipcRenderer.invoke('project:missing-images', projectId, micrographs),
+
   // Export as .smz
   exportSmz: (projectId, projectData) =>
     ipcRenderer.invoke('project:export-smz', projectId, projectData),
@@ -847,6 +851,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('menu:grain-detection', handler);
     return () => ipcRenderer.removeListener('menu:grain-detection', handler);
   },
+  onImageStitcher: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('menu:image-stitcher', handler);
+    return () => ipcRenderer.removeListener('menu:image-stitcher', handler);
+  },
   onImageComparator: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('menu:image-comparator', handler);
@@ -917,5 +926,26 @@ contextBridge.exposeInMainWorld('api', {
       return () => ipcRenderer.removeListener('grainspot:download-progress', handler);
     },
     load: () => ipcRenderer.invoke('grainspot:load'),
+  },
+
+  // Image stitcher (electron/stitchService.js)
+  stitch: {
+    machine: () => ipcRenderer.invoke('stitch:machine'),
+    prepare: (session, index, imagePath) => ipcRenderer.invoke('stitch:prepare', session, index, imagePath),
+    build: (session, job) => ipcRenderer.invoke('stitch:build', session, job),
+    cancelBuild: (session) => ipcRenderer.invoke('stitch:cancel-build', session),
+    onBuildProgress: (callback) => {
+      const handler = (_event, progress) => callback(progress);
+      ipcRenderer.on('stitch:build-progress', handler);
+      return () => ipcRenderer.removeListener('stitch:build-progress', handler);
+    },
+    saveAs: (session, outputPath, format) => ipcRenderer.invoke('stitch:save-as', session, outputPath, format),
+    preview: (session, index, maxSide) => ipcRenderer.invoke('stitch:preview', session, index, maxSide),
+    chooseFolder: () => ipcRenderer.invoke('stitch:choose-folder'),
+    saveWithDialog: (session, defaultName) => ipcRenderer.invoke('stitch:save-dialog', session, defaultName),
+    handOver: (session, name) => ipcRenderer.invoke('stitch:hand-over', session, name),
+    saveHandedWithDialog: (filePath, defaultName) => ipcRenderer.invoke('stitch:save-handed-dialog', filePath, defaultName),
+    discardHanded: (filePath) => ipcRenderer.invoke('stitch:discard-handed', filePath),
+    cleanup: (session) => ipcRenderer.invoke('stitch:cleanup', session),
   },
 });

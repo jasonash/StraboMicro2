@@ -173,7 +173,9 @@ function MicrographNode({ micrograph, allMicrographs, depth, activeMicrographId,
               src={thumbnailUrl}
               alt={micrograph.name}
               sx={{
-                width: Math.max(80, 160 - depth * 20),
+                // Shrinks to fit a narrow column (compact layout); 80-160 px otherwise
+                width: '100%',
+                maxWidth: Math.max(80, 160 - depth * 20),
                 height: 'auto',
                 borderRadius: '4px',
                 border: isActive ? '2px solid' : '1px solid',

@@ -181,7 +181,7 @@ export function SharedProjectDialog({
 
       setInspectResult(inspect);
 
-      // A local copy to replace or my synced copy: ask first
+      // A local copy to replace, my synced copy, or a file missing images: ask first
       // Otherwise, start import directly
       if (importNeedsAnswer(inspect)) {
         setDialogState('confirm-import');

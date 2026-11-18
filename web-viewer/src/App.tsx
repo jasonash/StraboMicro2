@@ -14,24 +14,17 @@ import { GroupsPanel } from './components/GroupsPanel';
 import { Header } from './components/Header';
 import { BreadcrumbsBar } from './components/BreadcrumbsBar';
 import { SpotsPanel } from './components/SpotsPanel';
+import { Footer } from './components/Footer';
 import { HttpTileLoader } from './services/tileLoader';
+import { viewerLinks, chooseLayout, detailsBeside } from './config/viewerConfig';
+import { viewerConfig } from './config/current';
+import { fileExists } from './services/fileExists';
 import type { ProjectMetadata, MicrographMetadata, SampleMetadata, Spot } from './types/project-types';
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 
-// Base URL for project files — configure for your server
-// In development, Vite proxy or a local server can serve the files
-const getBaseUrl = () => {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('base') || './smzFiles';
-};
-
-const getProjectId = () => {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('p') || null;
-};
 
 // ============================================================================
 // HELPERS
@@ -67,6 +60,17 @@ function findParentSample(project: ProjectMetadata, micrographId: string): Sampl
   return null;
 }
 
+/** The page's width (inside an iframe: the frame's), kept current on resize */
+function useWindowWidth(): number {
+  const [width, setWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return width;
+}
+
 // ============================================================================
 // MAIN APP
 // ============================================================================
@@ -78,8 +82,17 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [sidebarTab, setSidebarTab] = useState(0);
 
-  const projectId = useMemo(() => getProjectId(), []);
-  const baseUrl = useMemo(() => getBaseUrl(), []);
+  const [hasPdf, setHasPdf] = useState(false);
+  const viewerWidth = useWindowWidth();
+  const layout = chooseLayout(viewerConfig.layout, viewerWidth);
+  const beside = detailsBeside(viewerWidth);
+  // Compact layout: the details panel's open state once the viewer has
+  // toggled it; until then it is open when it fits beside the image
+  const [detailsChoice, setDetailsChoice] = useState<boolean | null>(null);
+  const detailsOpen = detailsChoice ?? beside;
+
+  const config = viewerConfig;
+  const { projectId, baseUrl } = config;
 
   const tileLoader = useMemo(() => {
     if (!projectId) return null;
@@ -133,8 +146,16 @@ export default function App() {
 
   useEffect(() => {
     if (!projectId) {
-      setError('No project ID provided. Use ?p=<projectId> in the URL.');
+      setError(new URLSearchParams(window.location.search).get('p')
+        ? 'This project id is not valid. Use ?p=<projectId> in the URL.'
+        : 'No project ID provided. Use ?p=<projectId> in the URL.');
       return;
+    }
+
+    // Standalone: offer project.pdf only when the folder has one (v1 local
+    // saves and failed v2 PDF steps have none)
+    if (config.mode === 'standalone' && config.showPdfLink) {
+      fileExists(`${baseUrl}/${projectId}/project.pdf`).then(setHasPdf);
     }
 
     const loadProject = async () => {
@@ -158,7 +179,12 @@ export default function App() {
     };
 
     loadProject();
-  }, [projectId, baseUrl]);
+  }, [projectId, baseUrl, config]);
+
+  const links = useMemo(
+    () => (projectId ? viewerLinks(config, projectId, hasPdf) : null),
+    [config, projectId, hasPdf],
+  );
 
   // ============================================================================
   // HANDLERS
@@ -187,7 +213,7 @@ export default function App() {
     );
   }
 
-  if (!project || !tileLoader) {
+  if (!project || !tileLoader || !links) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', bgcolor: 'background.default' }}>
         <Typography sx={{
@@ -201,10 +227,102 @@ export default function App() {
   // RENDER
   // ============================================================================
 
+  // Compact layout (src/config/viewerConfig.ts chooseLayout): for an iframe
+  // in another site's page, as in the EPOS mockup: micrographs in a narrow
+  // column, the image, and the details panel behind a Details button (beside
+  // the image when it fits, over it otherwise).
+  if (layout === 'compact') {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+        <Header
+          projectName={project.name}
+          links={links}
+          showLogo={config.showHeader}
+          dense
+          detailsOpen={detailsOpen}
+          onToggleDetails={() => setDetailsChoice(!detailsOpen)}
+        />
+
+        <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
+          <Box sx={{
+            width: beside ? 150 : 116,
+            bgcolor: 'background.paper',
+            borderRight: 1,
+            borderColor: 'divider',
+            flexShrink: 0,
+            overflow: 'auto',
+          }}>
+            <ProjectTree
+              project={project}
+              allMicrographs={allMicrographs}
+              activeMicrographId={activeMicrographId}
+              tileLoader={tileLoader}
+              onSelectMicrograph={handleSelectMicrograph}
+            />
+          </Box>
+
+        {/* Canvas area */}
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <BreadcrumbsBar
+            micrograph={activeMicrograph}
+            allMicrographs={allMicrographs}
+            selectedSpotName={selectedSpot?.name}
+            onNavigate={handleSelectMicrograph}
+          />
+          <Box sx={{ flex: 1, position: 'relative' }}>
+            <TiledViewer
+              micrographId={activeMicrographId}
+              spots={activeSpots}
+              sketchLayers={activeMicrograph?.sketchLayers}
+              scalePixelsPerCentimeter={activeMicrograph?.scalePixelsPerCentimeter}
+              childMicrographs={childMicrographs}
+              imageWidth={activeMicrograph?.width || activeMicrograph?.imageWidth}
+              imageHeight={activeMicrograph?.height || activeMicrograph?.imageHeight}
+              isFlipped={activeMicrograph?.isFlipped === true}
+              selectedSpotId={selectedSpot?.id || null}
+              tileLoader={tileLoader}
+              onSpotClick={handleSpotClick}
+              onCanvasClick={() => setSelectedSpot(null)}
+              onOverlayClick={handleSelectMicrograph}
+            />
+          </Box>
+        </Box>
+
+
+          {detailsOpen && (
+            <Box sx={{
+              width: beside ? 260 : 'min(300px, 85%)',
+              bgcolor: 'background.paper',
+              borderLeft: 1,
+              borderColor: 'divider',
+              flexShrink: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              ...(beside ? {} : { position: 'absolute', top: 0, right: 0, bottom: 0, zIndex: 2, boxShadow: 6 }),
+            }}>
+          <PropertiesPanel
+            project={project}
+            micrograph={activeMicrograph}
+            spot={selectedSpot}
+            sample={activeSample}
+            allMicrographs={allMicrographs}
+            onDeselectSpot={() => setSelectedSpot(null)}
+            onSelectSpot={handleSpotClick}
+          />
+            </Box>
+          )}
+        </Box>
+
+        {config.showFooter && <Footer appDownloadUrl={links.appDownload} />}
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       {/* Header */}
-      <Header projectName={project.name} tileLoader={tileLoader} />
+      <Header projectName={project.name} links={links} showLogo={config.showHeader} />
 
       {/* Main content */}
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -324,6 +442,7 @@ export default function App() {
               childMicrographs={childMicrographs}
               imageWidth={activeMicrograph?.width || activeMicrograph?.imageWidth}
               imageHeight={activeMicrograph?.height || activeMicrograph?.imageHeight}
+              isFlipped={activeMicrograph?.isFlipped === true}
               selectedSpotId={selectedSpot?.id || null}
               tileLoader={tileLoader}
               onSpotClick={handleSpotClick}
@@ -355,6 +474,8 @@ export default function App() {
           />
         </Box>
       </Box>
+
+      {config.showFooter && <Footer appDownloadUrl={links.appDownload} />}
     </Box>
   );
 }

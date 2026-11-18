@@ -58,6 +58,8 @@ import { FaultsShearZonesInfoDialog } from './dialogs/metadata/faultsshearzon es
 import { ExtinctionMicrostructureInfoDialog } from './dialogs/metadata/extinctionmicrostructure/ExtinctionMicrostructureInfoDialog';
 import { AssociatedFilesInfoDialog } from './dialogs/metadata/associatedfiles/AssociatedFilesInfoDialog';
 import { LinksInfoDialog } from './dialogs/metadata/links/LinksInfoDialog';
+import { SpotTagsDialog } from './dialogs/SpotTagsDialog';
+import { AddMicrographToGroupsDialog } from './dialogs/AddMicrographToGroupsDialog';
 import { MetadataSummary } from './MetadataSummary';
 import { CustomUserDataSummary } from './CustomUserDataSummary';
 import { GrainSizeSummary } from './GrainSizeSummary';
@@ -94,6 +96,8 @@ function TabPanel(props: TabPanelProps) {
 export function PropertiesPanel() {
   const project = useAppStore((state) => state.project);
   const activeMicrographId = useAppStore((state) => state.activeMicrographId);
+  const activeMicrographName = useAppStore((state) =>
+    state.activeMicrographId ? state.micrographIndex.get(state.activeMicrographId)?.name ?? '' : '');
   const activeSpotId = useAppStore((state) => state.activeSpotId);
   const deleteMicrograph = useAppStore((state) => state.deleteMicrograph);
   const deleteSpot = useAppStore((state) => state.deleteSpot);
@@ -660,6 +664,19 @@ export function PropertiesPanel() {
           onClose={() => setOpenDialog(null)}
           micrographId={activeSpotId ? undefined : (activeMicrographId || undefined)}
           spotId={activeSpotId || undefined}
+        />
+      )}
+
+      {/* Tags of the spot / groups of the micrograph (Claire's issue #61) */}
+      {openDialog === 'tags' && activeSpotId && (
+        <SpotTagsDialog open onClose={() => setOpenDialog(null)} spotId={activeSpotId} />
+      )}
+      {openDialog === 'groups' && activeMicrographId && !activeSpotId && (
+        <AddMicrographToGroupsDialog
+          open
+          onClose={() => setOpenDialog(null)}
+          micrographId={activeMicrographId}
+          micrographName={activeMicrographName}
         />
       )}
 

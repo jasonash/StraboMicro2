@@ -28,6 +28,7 @@ const { prepareProjectJson } = require('../projectSerializer');
 const { moveProjectToAccount } = require('../projectCopies');
 const tileGenerator = require('../tileGenerator');
 const tileArchive = require('../tileArchive');
+const { convertBmpOriginals } = require('../originalImages');
 const sidecar = require('./sidecar');
 const { planPush, batchPush, applyPushResults } = require('./pushBuilder');
 const { SyncError } = require('./client');
@@ -148,6 +149,9 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   if (!state) throw new Error('This project is not synced');
   const pid = state.binding.pid;
   const clientId = getClientId();
+  // A BMP original (v1, or pulled from a copy that has not converted it):
+  // sharp cannot read it, so it becomes a PNG before its tiles are made
+  await convertBmpOriginals(folder);
   const hashes = await sidecar.createHashIndex(folder);
   state.tileSources = state.tileSources || {};
 
@@ -326,10 +330,33 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
       }),
   ];
 
+  // An original or thumbnail the server has but this folder lost (deleted by
+  // hand, a replace from a file without images): fetched back, never
+  // unref'd. Unref'ing it would take the image from every copy of the project
+  // (Sentry ELECTRON-39, 2026-11-16). Waiting to download, its entity's files
+  // are left alone below; the caller runs the download after the push.
+  state.downloads = state.downloads || {};
+  let refetch = 0;
+  for (const key of current.order) {
+    const e = current.entities[key];
+    if (!e || e.type !== 'micrograph' || !state.base[`${e.type}:${e.id}`]) continue;
+    for (const [role, sub] of [['image', 'images'], ['thumbnail', 'compositeThumbnails']]) {
+      const rk = refKey(e.type, e.id, role);
+      const sha = state.refs[rk];
+      if (!sha || state.downloads[rk] || fs.existsSync(path.join(folder, sub, e.id))) continue;
+      state.downloads[rk] = sha;
+      refetch++;
+    }
+  }
+  if (refetch > 0) {
+    log.info(`[Sync] ${refetch} image file(s) missing here are fetched back from the server`);
+    await sidecar.saveState(folder, state);
+  }
+
   // C. Files and refs, for entities the server has. A file waiting to be
   // downloaded (a pull brought a newer one) is neither uploaded nor unref'd,
   // and nor are the other files of its entity (tiles of a missing original)
-  const downloads = state.downloads || {};
+  const downloads = state.downloads;
   const downloading = new Set(Object.keys(downloads).map((rk) => rk.slice(0, rk.indexOf('|'))));
   const tmpDir = path.join(sidecar.syncDir(folder), 'tmp');
   const wanted = new Set();
@@ -360,7 +387,14 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
         }
         const imagePath = path.join(folder, 'images', f.id);
         onProgress({ phase: 'tiles', item: f.id });
-        await tileGenerator.processImageComplete(imagePath);
+        try {
+          await tileGenerator.processImageComplete(imagePath);
+        } catch (err) {
+          // One original that cannot be tiled (an unreadable file) must not
+          // stop the push of everything else; its tiles are tried next time
+          log.error(`[Sync] Tiles of ${f.type} ${f.id} could not be made, skipped:`, err);
+          continue;
+        }
         const entries = f.tiles === 'affine'
           ? await tileArchive.collectAffineTileEntries(f.affineTileHash, f.id)
           : await tileArchive.collectTileEntries(imagePath, f.id);
@@ -426,7 +460,7 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   }
   await sidecar.saveState(folder, state);
   const conflicts = problems.filter((p) => p.result.status === 'conflict' || p.result.status === 'deleted').length;
-  return { pushed, problems, conflicts, filesUploaded, ready, restored };
+  return { pushed, problems, conflicts, filesUploaded, ready, restored, refetch };
 }
 
 /**

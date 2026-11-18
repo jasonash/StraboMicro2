@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const log = require('electron-log');
 const scratchSpace = require('./scratchSpace');
-const bmp = require('bmp-js');
+const { decodeBmp } = require('./originalImages');
 const { tiffImageTo8Bit } = require('./tiffPixels');
 
 // tiff is an ES module, we'll import it dynamically when needed
@@ -151,6 +151,18 @@ function calculateUpscaledDimensions(width, height) {
     height: Math.round(height * scale),
     upscaled: true,
   };
+}
+
+/**
+ * The size an image of this size has after import: shrunk to MAX_IMAGE_DIMENSION on the long
+ * side, or enlarged to MIN_IMAGE_WIDTH wide (the rule convertToScratchJPEG applies).
+ * @returns {{width: number, height: number}}
+ */
+function importedDimensions(width, height) {
+  const down = calculateDownscaledDimensions(width, height);
+  if (down.downscaled) return { width: down.width, height: down.height };
+  const up = calculateUpscaledDimensions(width, height);
+  return { width: up.width, height: up.height };
 }
 
 /**
@@ -300,8 +312,10 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
         jpegSize: info.size,
       };
     } else if (ext === '.bmp') {
-      // Use bmp-js library for BMP files (Sharp/libvips doesn't support BMP)
-      log.info(`[ImageConverter] Detected BMP file, using bmp-js library...`);
+      // Sharp/libvips doesn't support BMP. electron/originalImages.js decodes
+      // it (bmp-js read 32-bit BITFIELDS BMPs with the wrong channel order:
+      // a gray BSE image came out red)
+      log.info(`[ImageConverter] Detected BMP file, decoding...`);
 
       // Read BMP file - use let so we can null it after use
       let fileBuffer = await fs.promises.readFile(inputPath);
@@ -310,36 +324,21 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
         progressCallback({ stage: 'converting', percent: 30 });
       }
 
-      // Decode BMP
-      let bmpData = bmp.decode(fileBuffer);
+      const decoded = await decodeBmp(fileBuffer);
 
       // Release file buffer immediately
       fileBuffer = null;
 
-      const width = bmpData.width;
-      const height = bmpData.height;
-      log.info(`[ImageConverter] BMP dimensions: ${width}x${height}`);
+      const width = decoded.width;
+      const height = decoded.height;
+      const bmpChannels = decoded.channels;
+      log.info(`[ImageConverter] BMP dimensions: ${width}x${height}, ${bmpChannels} channel(s)`);
 
       if (progressCallback) {
         progressCallback({ stage: 'converting', percent: 60 });
       }
 
-      // bmp-js returns ABGR format (4 bytes per pixel: Alpha, Blue, Green, Red)
-      // We need to convert to RGB for Sharp (JPEG doesn't support alpha anyway)
-      const pixelCount = width * height;
-      let rgbBuffer = Buffer.alloc(pixelCount * 3);
-
-      for (let i = 0; i < pixelCount; i++) {
-        const srcOffset = i * 4;
-        const dstOffset = i * 3;
-        // Convert ABGR to RGB (skip alpha, reorder BGR to RGB)
-        rgbBuffer[dstOffset] = bmpData.data[srcOffset + 3];     // R (was at position 3)
-        rgbBuffer[dstOffset + 1] = bmpData.data[srcOffset + 2]; // G (was at position 2)
-        rgbBuffer[dstOffset + 2] = bmpData.data[srcOffset + 1]; // B (was at position 1)
-      }
-
-      // Release bmpData - we've extracted what we need
-      bmpData = null;
+      let rgbBuffer = decoded.data;
 
       // Check if resizing is needed (downscale large images, upscale small images)
       let targetDims = calculateDownscaledDimensions(width, height);
@@ -360,7 +359,7 @@ async function convertToScratchJPEG(inputPath, progressCallback = null) {
         raw: {
           width,
           height,
-          channels: 3,
+          channels: bmpChannels,
         },
         limitInputPixels: false,
       });
@@ -754,4 +753,5 @@ module.exports = {
   isValidImage,
   validateImageFile,
   resizeScratchImage,
+  importedDimensions,
 };
