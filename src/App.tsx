@@ -1780,6 +1780,9 @@ function App() {
       <NewProjectDialog
         isOpen={isNewProjectDialogOpen}
         onClose={() => setIsNewProjectDialogOpen(false)}
+        // Straight to Collaborators: the new project is synced, but the sync
+        // store does not know it yet (the Collaborate event would turn sync on)
+        onInviteCollaborators={() => setIsCollaboratorsOpen(true)}
       />
       <EditingScope target={isEditProjectDialogOpen && project ? { type: 'project', id: project.id } : null}>
         <EditProjectDialog
