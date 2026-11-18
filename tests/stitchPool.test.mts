@@ -33,17 +33,24 @@ const hardMakers = new Set<number>();
 const posted: ToStitchWorker[] = [];
 let hardFeaturesNow = 0;
 let hardFeaturesMost = 0;
+/** Workers starting OpenCV right now, the most at once, jobs sent to a worker not started */
+let startingNow = 0;
+let startingMost = 0;
+let jobsBeforeStart = 0;
 
 function nodeWorker(): StitchWorkerLike {
   const worker = new Worker(new URL('./stitchNodeWorker.mts', import.meta.url));
   live.add(worker);
   const index = made++;
   const hardJobs = new Set<number>();
+  let isStarted = false;
   const like: StitchWorkerLike = {
     onmessage: null,
     onerror: null,
     postMessage(message) {
       posted.push(message);
+      if (message.type === 'init') startingMost = Math.max(startingMost, ++startingNow);
+      if (message.type === 'job' && !isStarted) jobsBeforeStart++;
       if (message.type === 'job' && message.job.kind === 'features' && message.job.level === 'hard') {
         hardJobs.add(message.id);
         hardMakers.add(index);
@@ -60,6 +67,7 @@ function nodeWorker(): StitchWorkerLike {
   };
   worker.on('message', (message: FromStitchWorker) => {
     if ((message.type === 'done' || message.type === 'error') && hardJobs.delete(message.id)) hardFeaturesNow--;
+    if (message.type === 'started') { isStarted = true; startingNow--; }
     like.onmessage?.(message);
   });
   worker.on('error', (error) => like.onerror?.(error.message));
@@ -144,6 +152,9 @@ let gridLayout: StitchLayout | null = null;
   const jobs = posted.filter((m) => m.type === 'job');
   check('each job was given once', jobs.length === 9 + 36, jobs.length);
   check('every worker was sent every tile\'s features', posted.filter((m) => m.type === 'store').length === 9 * 3);
+  // Several workers starting OpenCV at once crashed the window now and then (2026-11-18)
+  check('OpenCV started in one worker at a time', startingMost === 1 && posted.filter((m) => m.type === 'init').length === 3, startingMost);
+  check('no job sent to a worker before its OpenCV was up', jobsBeforeStart === 0, jobsBeforeStart);
 
   // A snap through the pool: one tile taken out and dropped back a little off
   if (result.layout) {

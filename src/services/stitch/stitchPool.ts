@@ -107,11 +107,22 @@ export function startStitch(tiles: StitchTile[], deps: PoolDeps, options: PoolOp
 
   const isHardFeatures = (job: StitchJob) => job.kind === 'features' && job.level === 'hard';
 
+  // OpenCV starts in one worker at a time: six workers compiling OpenCV.js at the same moment
+  // crashed the window now and then (2026-11-18: e2e 43, 1 run in 5 to 10, "page ended:
+  // crashed (exit code 4)" right after "6 worker(s)"; 40 of 40 passed with the starts
+  // spread out). A worker gets jobs once its OpenCV is up; the first one starts at once.
+  const started = new Set<StitchWorkerLike>();
+  let nextToStart = 0;
+  const startNext = () => {
+    if (closed || nextToStart >= workers.length) return;
+    workers[nextToStart++].postMessage({ type: 'init', opencvScript: deps.opencvScript });
+  };
+
   const pump = () => {
     if (closed) return;
     for (let k = 0; k < workers.length; k++) {
       const worker = workers[k];
-      if (working.has(worker)) continue;
+      if (!started.has(worker) || working.has(worker)) continue;
       const at = queue.findIndex((w) => !isHardFeatures(w.job) || k < HARD_FEATURES_AT_ONCE);
       if (at < 0) continue;
       const [waiting] = queue.splice(at, 1);
@@ -133,6 +144,12 @@ export function startStitch(tiles: StitchTile[], deps: PoolDeps, options: PoolOp
   for (const worker of workers) {
     worker.onmessage = (message) => {
       if (closed) return;
+      if (message.type === 'started') {
+        started.add(worker);
+        startNext();
+        pump();
+        return;
+      }
       if (message.type === 'read') {
         deps.read(message.tile, message.maxSide).then(
           (image) => {
@@ -155,8 +172,8 @@ export function startStitch(tiles: StitchTile[], deps: PoolDeps, options: PoolOp
       failure = new Error(message || 'A stitch worker failed');
       stopAll(failure);
     };
-    worker.postMessage({ type: 'init', opencvScript: deps.opencvScript });
   }
+  startNext();
 
   const submit = (job: StitchJob) =>
     new Promise<StitchJobResult>((resolve, reject) => {

@@ -36,7 +36,9 @@ export type FromStitchWorker =
   /** The whole tile as a gray copy with its long side at most maxSide */
   | { type: 'read'; id: number; tile: number; maxSide: number }
   | { type: 'done'; id: number; result: StitchJobResult }
-  | { type: 'error'; id: number; message: string };
+  | { type: 'error'; id: number; message: string }
+  /** OpenCV is up after 'init', or failed to start (the first job reports why) */
+  | { type: 'started' };
 
 export interface JobRunner {
   run(job: StitchJob): Promise<StitchJobResult>;
@@ -82,7 +84,11 @@ export function createWorkerSide(
   loadOpenCV: (script: string | null) => Promise<{ cv: OpenCV }>,
   post: (message: FromStitchWorker) => void,
 ): { handle(message: ToStitchWorker): void } {
-  let runner: Promise<JobRunner> | null = null;
+  // Jobs and stored features that come before 'init' wait for it
+  let startRunner: (runner: Promise<JobRunner>) => void = () => undefined;
+  const runner = new Promise<JobRunner>((resolve) => { startRunner = resolve; });
+  // A failed start is reported by the first job
+  runner.catch(() => undefined);
   let nextRead = 1;
   const reads = new Map<number, { resolve: (image: GrayImage) => void; reject: (error: Error) => void }>();
   const read = (tile: number, maxSide: number) =>
@@ -96,9 +102,9 @@ export function createWorkerSide(
   return {
     handle(message) {
       if (message.type === 'init') {
-        runner = loadOpenCV(message.opencvScript).then(({ cv }) => createJobRunner(cv, read));
-        // A failed start is reported by the first job
-        runner.catch(() => undefined);
+        const starting = loadOpenCV(message.opencvScript).then(({ cv }) => createJobRunner(cv, read));
+        startRunner(starting);
+        starting.then(() => post({ type: 'started' }), () => post({ type: 'started' }));
       } else if (message.type === 'image' || message.type === 'read-error') {
         const waiting = reads.get(message.id);
         reads.delete(message.id);
@@ -108,13 +114,12 @@ export function createWorkerSide(
       } else if (message.type === 'store') {
         const { tile, features } = message;
         chain = chain.then(async () => {
-          (await runner)?.store(tile, features);
+          (await runner).store(tile, features);
         }).catch(() => undefined);
       } else {
         const { id, job } = message;
         chain = chain.then(async () => {
           try {
-            if (!runner) throw new Error('The worker was not started');
             const result = await (await runner).run(job);
             // Nothing is transferred: this worker keeps its own copy of the features it made
             post({ type: 'done', id, result });
