@@ -120,6 +120,26 @@ app.whenReady().then(async () => {
       JSON.stringify(progress.slice(-2)));
     check('compare wrote nothing into the local folder', !fs.existsSync(path.join(local, 'sync')));
 
+    // The same copy in v1 form (a v1 file imported and never saved: empty
+    // values left out) is still identical: compare takes the app's own form
+    const projectFile = path.join(local, 'project.json');
+    const appForm = fs.readFileSync(projectFile, 'utf8');
+    const v1Form = (v) => {
+      if (Array.isArray(v)) return v.map(v1Form);
+      if (!v || typeof v !== 'object') return v;
+      const out = {};
+      for (const [k, x] of Object.entries(v)) {
+        if (x === '' || (Array.isArray(x) && x.length === 0)) continue;
+        out[k] = v1Form(x);
+      }
+      return out;
+    };
+    fs.writeFileSync(projectFile, JSON.stringify(v1Form(JSON.parse(appForm))));
+    check('test setup: the v1-form file differs from the app form', fs.readFileSync(projectFile, 'utf8') !== JSON.stringify(JSON.parse(appForm)));
+    const sameV1 = await svc.compare(pid, SERVER, serverPid, () => {});
+    check('identical copies, the local one in v1 form', sameV1.ok && sameV1.identical === true && sameV1.total === 0, JSON.stringify(sameV1));
+    fs.writeFileSync(projectFile, appForm);
+
     const app1 = await ser.loadProjectJson(pid);
     app1.datasets[0].samples[0].micrographs[0].name = 'Renamed here';
     app1.datasets[0].samples[0].label = 'Sample renamed here';
