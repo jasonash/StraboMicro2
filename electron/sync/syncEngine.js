@@ -28,6 +28,7 @@ const { prepareProjectJson } = require('../projectSerializer');
 const { moveProjectToAccount } = require('../projectCopies');
 const tileGenerator = require('../tileGenerator');
 const tileArchive = require('../tileArchive');
+const { convertBmpOriginals } = require('../originalImages');
 const sidecar = require('./sidecar');
 const { planPush, batchPush, applyPushResults } = require('./pushBuilder');
 const { SyncError } = require('./client');
@@ -148,6 +149,9 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
   if (!state) throw new Error('This project is not synced');
   const pid = state.binding.pid;
   const clientId = getClientId();
+  // A BMP original (v1, or pulled from a copy that has not converted it):
+  // sharp cannot read it, so it becomes a PNG before its tiles are made
+  await convertBmpOriginals(folder);
   const hashes = await sidecar.createHashIndex(folder);
   state.tileSources = state.tileSources || {};
 
@@ -383,7 +387,14 @@ async function pushProject({ folder, client, onProgress = () => {} }) {
         }
         const imagePath = path.join(folder, 'images', f.id);
         onProgress({ phase: 'tiles', item: f.id });
-        await tileGenerator.processImageComplete(imagePath);
+        try {
+          await tileGenerator.processImageComplete(imagePath);
+        } catch (err) {
+          // One original that cannot be tiled (an unreadable file) must not
+          // stop the push of everything else; its tiles are tried next time
+          log.error(`[Sync] Tiles of ${f.type} ${f.id} could not be made, skipped:`, err);
+          continue;
+        }
         const entries = f.tiles === 'affine'
           ? await tileArchive.collectAffineTileEntries(f.affineTileHash, f.id)
           : await tileArchive.collectTileEntries(imagePath, f.id);

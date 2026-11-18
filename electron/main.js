@@ -4212,6 +4212,12 @@ ipcMain.handle('project:save-json', async (event, project, projectId) => {
 ipcMain.handle('project:load-json', async (event, projectId) => {
   try {
     log.info(`[IPC] Loading project.json for: ${projectId}`);
+    // v1 BMP originals become PNG once: sharp cannot read BMP (tiles, sync, export)
+    try {
+      await require('./originalImages').convertBmpOriginals(projectFolders.getProjectFolderPaths(projectId).projectPath);
+    } catch (err) {
+      log.error('[IPC] Converting BMP originals failed:', err);
+    }
     const project = await projectSerializer.loadProjectJson(projectId);
     log.info('[IPC] Successfully loaded project.json');
     return project;
