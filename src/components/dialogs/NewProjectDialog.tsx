@@ -9,6 +9,10 @@
  * in, it follows the preference (16al), and the first choice sets it.
  * Logged out, syncing needs the inline login first. A synced project is
  * saved and turned on before it loads (turning sync on moves the folder).
+ *
+ * Create and Invite Collaborators... (Claire): the same, then the
+ * Collaborators dialog opens on the new project (onInviteCollaborators).
+ * Only for a synced project: greyed out with a note for this computer only.
  */
 
 import { useEffect, useState } from 'react';
@@ -36,6 +40,8 @@ import type { ProjectMetadata } from '@/types/project-types';
 interface NewProjectDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Opens the Collaborators dialog on the project just created (and loaded) */
+  onInviteCollaborators?: () => void;
 }
 
 interface ProjectFormData {
@@ -62,7 +68,7 @@ const initialFormData: ProjectFormData = {
   notes: '',
 };
 
-export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
+export function NewProjectDialog({ isOpen, onClose, onInviteCollaborators }: NewProjectDialogProps) {
   const [formData, setFormData] = useState<ProjectFormData>(initialFormData);
   const [dateError, setDateError] = useState<string>('');
   const loadProject = useAppStore((state) => state.loadProject);
@@ -108,8 +114,9 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
     return true;
   };
 
-  const handleCreate = async () => {
-    if (!validateForm() || keep === '' || (keep === 'sync' && !loggedIn)) {
+  /** @param invite then open the Collaborators dialog (synced projects only) */
+  const handleCreate = async (invite: boolean) => {
+    if (!validateForm() || keep === '' || (keep === 'sync' && !loggedIn) || (invite && keep !== 'sync')) {
       return;
     }
     // The first choice made while logged in sets the preference (16ak)
@@ -175,6 +182,7 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
       setFormData(initialFormData);
       setDateError('');
       onClose();
+      if (invite && !syncProblem) onInviteCollaborators?.();
     } catch (error) {
       console.error('[NewProjectDialog] Error creating project folders:', error);
       // Surface the underlying reason (e.g. a OneDrive-redirected Documents folder)
@@ -189,6 +197,8 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
     setDateError('');
     onClose();
   };
+
+  const canCreate = !!formData.name.trim() && keep !== '' && !(keep === 'sync' && !loggedIn) && !creating;
 
   // Calculate min/max dates for date pickers
   const getStartDateMax = () => {
@@ -245,6 +255,11 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
                 >
                   Log in to StraboSpot to sync this project.
                 </Alert>
+              )}
+              {keep === 'local' && onInviteCollaborators && (
+                <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
+                  To invite collaborators, choose synced to StraboSpot.
+                </Typography>
               )}
             </Box>
 
@@ -342,10 +357,19 @@ export function NewProjectDialog({ isOpen, onClose }: NewProjectDialogProps) {
       </DialogContent>
       <DialogActions>
         <Button onClick={handleCancel}>Cancel</Button>
+        {onInviteCollaborators && (
+          <Button
+            onClick={() => void handleCreate(true)}
+            variant="outlined"
+            disabled={!canCreate || keep !== 'sync'}
+          >
+            Create and Invite Collaborators...
+          </Button>
+        )}
         <Button
-          onClick={handleCreate}
+          onClick={() => void handleCreate(false)}
           variant="contained"
-          disabled={!formData.name.trim() || keep === '' || (keep === 'sync' && !loggedIn) || creating}
+          disabled={!canCreate}
         >
           Create Project
         </Button>

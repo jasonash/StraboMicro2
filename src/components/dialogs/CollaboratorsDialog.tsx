@@ -14,9 +14,12 @@
  * (restorable on the website) and members' copies become separate.
  * Pasted lists and join links (QR codes) are on the website's Collaborators
  * page, which works on the same list; Open on StraboSpot... goes there.
+ * Opened right after New Project (Create and Invite Collaborators...), the
+ * first upload may still run: the server takes no invitation before it is
+ * done, so the invite part waits for it (the list is read again then).
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -42,6 +45,7 @@ import {
 import { getRestServerUrl } from './PreferencesDialog';
 import { ASSIGNABLE_ROLES, ROLE_DESCRIPTION, ROLE_FOR_ME, roleLabel, withArticle } from '@/utils/collaboratorRoles';
 import { useAppStore } from '@/store/useAppStore';
+import { useSyncStore } from '@/store/useSyncStore';
 
 interface CollaboratorsDialogProps {
   open: boolean;
@@ -68,6 +72,8 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave, onDelet
   /** Deleting from StraboSpot (owner): after the push, the same, plus the name typed to confirm */
   const [deleting, setDeleting] = useState<{ notAccepted: number; keep: boolean; typed: string } | null>(null);
   const projectName = useAppStore((s) => (s.project?.id === projectId ? s.project.name : null)) ?? '';
+  /** The first upload of this project is done (the server takes invitations only then) */
+  const firstUploadDone = useSyncStore((s) => s.projectId === projectId && s.phase === 'ready');
 
   const load = useCallback(async () => {
     if (!projectId || !window.api) return;
@@ -91,6 +97,19 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave, onDelet
     setDeleting(null);
     void load();
   }, [open, load]);
+
+  // The first upload finished while the dialog was open: read the list again
+  const waitedForUpload = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      waitedForUpload.current = false;
+    } else if (!firstUploadDone) {
+      waitedForUpload.current = true;
+    } else if (waitedForUpload.current) {
+      waitedForUpload.current = false;
+      void load();
+    }
+  }, [open, firstUploadDone, load]);
 
   const isOwner = list?.myRole === 'owner';
   const owner = list?.members.find((m) => m.role === 'owner') ?? null;
@@ -293,7 +312,19 @@ export function CollaboratorsDialog({ open, projectId, onClose, onLeave, onDelet
 
           {message && <Alert severity={message.ok ? 'success' : 'error'}>{message.text}</Alert>}
 
-          {list && isOwner && (
+          {list && isOwner && !firstUploadDone && (
+            <>
+              <Divider />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1 }} data-testid="collaborators-waiting-for-upload">
+                <CircularProgress size={18} />
+                <Typography variant="body2">
+                  Getting the project ready on StraboSpot… You can invite people as soon as it is there.
+                </Typography>
+              </Box>
+            </>
+          )}
+
+          {list && isOwner && firstUploadDone && (
             <>
               <Divider />
               <Typography variant="subtitle2">Invite by email</Typography>
