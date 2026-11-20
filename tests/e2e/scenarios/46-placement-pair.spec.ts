@@ -222,3 +222,81 @@ test('approximate point with X on the keyboard, and the switch in 3-Point Regist
   await ana.page.getByTestId('placement-backdrop-parent').click();
   await expect(toggle).toHaveAttribute('data-showing', 'PPL');
 });
+
+test('New Associated Micrograph with the synthetic test set: a turned BSE placed on XPL lands where truth.json says, Back and Next keep it', async ({ launch, runDir }) => {
+  const { makePairTestProject } = await import('../../makePairTestProject.mts');
+  const t = await makePairTestProject(`${runDir}/pairset`);
+  const crop = t.set.crops.find((c) => c.file === 'BSE_03_qf_turned.tif');
+  if (!crop?.truth) throw new Error('BSE_03 missing from the test set');
+  // truth: BSE px -> PPL px. The saved rectangle: scale = 1 / mag parent px per child px, rotation =
+  // the crop's turn, top-left (before turning) = center of the footprint minus half the scaled size
+  const m = crop.truth;
+  const scale = Math.hypot(m[0], m[3]);
+  const cx = m[0] * (BSE_W / 2) + m[1] * (BSE_H / 2) + m[2];
+  const cy = m[3] * (BSE_W / 2) + m[4] * (BSE_H / 2) + m[5];
+  const want = { X: cx - (BSE_W * scale) / 2, Y: cy - (BSE_H * scale) / 2, rotation: crop.deg, pxPerCm: 10000 / scale };
+
+  const ana = await launch('Ana', ACCOUNTS.ana, { login: false });
+  await openSmz(ana, t.smzPath, t.projectId);
+
+  await ana.caption('Section A PPL + > Add Associated Micrograph: BSE_03_qf_turned.tif, scaled rectangle, Pixel Conversion Factor');
+  await ana.page.getByText('Section A PPL (Reference)', { exact: true }).locator('xpath=../..')
+    .locator('button:has([data-testid="AddIcon"])').first().click();
+  await ana.page.getByRole('menuitem', { name: 'Add Associated Micrograph' }).click();
+  const dialog = ana.page.getByRole('dialog', { name: 'New Associated Micrograph' });
+  const next = dialog.getByRole('button', { name: 'Next' });
+  const pick = async (combo: string, option: string) => {
+    await dialog.getByRole('combobox', { name: new RegExp(`^${combo}`) }).click();
+    await ana.page.getByRole('option', { name: option, exact: true }).click();
+  };
+  await ana.answerDialog({ kind: 'open', filePaths: [crop.path] });
+  await dialog.getByRole('button', { name: 'Browse...' }).click();
+  await next.click(); // Load Associated Micrograph
+  await next.click(); // Image Rotation
+  await pick('Instrument Type', 'Optical Microscopy');
+  await pick('Image Type', 'Plane Polarized Light');
+  await next.click(); // Instrument & Image Information
+  await next.click(); // Instrument Data
+  await dialog.getByLabel(/^Name/).fill('BSE 03');
+  await next.click(); // Micrograph Metadata
+  await dialog.getByRole('radio', { name: 'Locate as a scaled rectangle' }).check();
+  await next.click(); // Location Method
+  await dialog.getByRole('radio', { name: 'Pixel Conversion Factor' }).check();
+  await next.click(); // Scale Method
+
+  await ana.caption(`XPL; ${(want.pxPerCm / 100).toFixed(0)} px per 100 μm; X, Y, rotation from truth.json`);
+  const canvas = dialog.getByTestId('placement-canvas');
+  await expect(canvas).toHaveAttribute('data-frame-width', '2048', { timeout: 60_000 });
+  await dialog.getByTestId('placement-backdrop-partner').click();
+  await expect(canvas).toHaveAttribute('data-showing', 'XPL');
+  // px per 100 μm (the default unit): px/cm / 100
+  await dialog.getByLabel('Number of Pixels').fill(String(want.pxPerCm / 100));
+  await dialog.getByLabel('Physical Length').fill('100');
+  await expect(dialog.getByText(new RegExp(`Scale: ${scale.toFixed(2)}x`))).toBeVisible();
+  await dialog.getByLabel('X (px)').fill(want.X.toFixed(3));
+  await dialog.getByLabel('Y (px)').fill(want.Y.toFixed(3));
+  await dialog.getByLabel('Rotation (°)').fill(String(want.rotation));
+  await dialog.getByLabel('Rotation (°)').press('Enter');
+
+  await ana.caption('Back to Scale Method and Next again: same place and size, still XPL');
+  await dialog.getByRole('button', { name: 'Back' }).click();
+  await next.click();
+  await expect(dialog.getByLabel('X (px)')).toBeEnabled({ timeout: 30_000 });
+  await expect(canvas).toHaveAttribute('data-showing', 'XPL');
+  await expect(dialog.getByLabel('X (px)')).toHaveValue(want.X.toFixed(1));
+  await expect(dialog.getByLabel('Y (px)')).toHaveValue(want.Y.toFixed(1));
+  await expect(dialog.getByText(new RegExp(`Scale: ${scale.toFixed(2)}x`))).toBeVisible();
+
+  await dialog.getByRole('button', { name: 'Finish' }).click();
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+  const saved = await ana.state(new Function('e', `
+    for (const d of e.app.getState().project?.datasets ?? []) for (const s of d.samples ?? [])
+      for (const m of s.micrographs ?? []) if (m.name === 'BSE 03') return { parentID: m.parentID, offset: m.offsetInParent,
+        rotation: m.rotation, scale: m.scalePixelsPerCentimeter };
+    return null;`) as never) as unknown as { parentID: string; offset: { X: number; Y: number }; rotation: number; scale: number } | null;
+  expect(saved?.parentID).toBe(t.pplId);
+  expect(Math.abs((saved?.offset.X ?? 0) - want.X)).toBeLessThan(0.01);
+  expect(Math.abs((saved?.offset.Y ?? 0) - want.Y)).toBeLessThan(0.01);
+  expect(saved?.rotation).toBeCloseTo(want.rotation, 6);
+  expect(Math.abs((saved?.scale ?? 0) - want.pxPerCm) / want.pxPerCm).toBeLessThan(1e-6);
+});
