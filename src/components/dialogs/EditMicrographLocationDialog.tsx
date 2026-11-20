@@ -12,6 +12,7 @@
  * 3. Placement UI (depends on methods chosen)
  */
 
+import { savedScaleOnParent } from '@/utils/placementMath';
 import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
@@ -241,8 +242,13 @@ export function EditMicrographLocationDialog({
       setOffsetX(offset.X);
       setOffsetY(offset.Y);
       setRotation(micro.rotation || 0);
-      setScaleX(micro.scaleX || 1);
-      setScaleY(micro.scaleY || 1);
+      // Saves keep only scalePixelsPerCentimeter (scaleX is cleared), so the scale on the parent
+      // comes from the two px/cm values, as the viewer draws it; it used to start at 1, so the
+      // overlay showed at the wrong size and a drag saved a new scale (src/utils/placementMath.ts)
+      const parentOfMicro = micro.parentID ? findMicrographById(project, micro.parentID) : null;
+      const onParent = savedScaleOnParent(micro.scalePixelsPerCentimeter, parentOfMicro?.scalePixelsPerCentimeter);
+      setScaleX(onParent);
+      setScaleY(onParent);
       setOpacity(micro.opacity ?? 1);
     } else if (hasPoint) {
       setLocationMethod('Locate by an approximate point');

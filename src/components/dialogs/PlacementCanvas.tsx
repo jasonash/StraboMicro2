@@ -13,8 +13,13 @@ import {
 } from '@mui/material';
 import { PanTool, RestartAlt, Timeline } from '@mui/icons-material';
 import Konva from 'konva';
-import { useAppStore } from '@/store';
 import { releaseImage } from '@/utils/imageUtils';
+import { usePlacementParent } from '@/hooks/usePlacementParent';
+import { PlacementBackdropToggle } from './PlacementBackdropToggle';
+import {
+  displayRatio, displayToSaved, savedToDisplay, childPixelsPerCm, overlayScaleOnDisplay,
+  type DisplayTransform,
+} from '@/utils/placementMath';
 import { tracedLinePixels, scaleFromTracedBar, traceScaleNote } from '@/utils/traceScaleBar';
 import { useLatest } from '@/hooks/useLatest';
 import { wheelZoomDirection } from '@/utils/wheelZoom';
@@ -82,28 +87,24 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const transformerRef = useRef<Konva.Transformer>(null);
   const childGroupRef = useRef<Konva.Group>(null);
 
-  const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
+  // The parent's medium copy is the display frame of all placement math
+  // (src/utils/placementMath.ts); for a PPL/XPL pair the other half can be
+  // shown instead, drawn over the same frame (src/hooks/usePlacementParent.ts)
+  const placementParent = usePlacementParent(parentMicrographId);
+  const parentImage = placementParent.frameImage;
+  const shownParentImage = placementParent.shownImage;
   const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
 
-  // Store refs to track images for cleanup (avoid stale closure issues)
-  const parentImageRef = useRef<HTMLImageElement | null>(null);
+  // Store a ref to track the child image for cleanup (avoid stale closure issues)
   const childImageRef = useRef<HTMLImageElement | null>(null);
-
-  // Keep refs in sync with state
-  useEffect(() => {
-    parentImageRef.current = parentImage;
-  }, [parentImage]);
 
   useEffect(() => {
     childImageRef.current = childImage;
   }, [childImage]);
 
-  // Cleanup Image objects on unmount only (empty dependency array)
+  // Cleanup the child Image object on unmount only (the hook releases the parent's)
   useEffect(() => {
     return () => {
-      if (parentImageRef.current) {
-        releaseImage(parentImageRef.current);
-      }
       if (childImageRef.current) {
         releaseImage(childImageRef.current);
       }
@@ -167,55 +168,24 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   const [editingCoordField, setEditingCoordField] = useState<'x' | 'y' | 'rotation' | null>(null);
   const [editingCoordText, setEditingCoordText] = useState('');
 
-  // Helper function to convert from center-based to top-left-based coordinates
-  const convertCenterToTopLeft = (centerX: number, centerY: number, _rotation: number, scaleX: number, scaleY: number) => {
-    // The child Group is positioned at its center due to offsetX/offsetY
-    // We need to calculate the top-left corner position in the UNROTATED coordinate system
-    // The legacy app measures offset BEFORE rotation is applied
-
-    // Calculate half dimensions considering scale
-    const halfWidth = (childWidth * scaleX) / 2;
-    const halfHeight = (childHeight * scaleY) / 2;
-
-    // Top-left is simply center minus half dimensions (no rotation applied)
-    const topLeftX = centerX - halfWidth;
-    const topLeftY = centerY - halfHeight;
-
-    return { x: topLeftX, y: topLeftY };
-  };
-
-  // Inverse of convertCenterToTopLeft (same legacy convention: top-left measured pre-rotation)
-  const convertTopLeftToCenter = (topLeftX: number, topLeftY: number, scaleX: number, scaleY: number) => {
-    const halfWidth = (childWidth * scaleX) / 2;
-    const halfHeight = (childHeight * scaleY) / 2;
-    return { x: topLeftX + halfWidth, y: topLeftY + halfHeight };
-  };
+  const childSize = { width: childWidth, height: childHeight };
+  // Original parent px per displayed px (1 until both are known)
+  const ratio = displayRatio(parentOriginalWidth, parentImage?.width);
 
   // Current overlay top-left in original parent pixel coordinates (the offsetInParent convention)
   const getOriginalPlacement = () => {
     if (!parentOriginalWidth || !parentImage?.width) return null;
-    const topLeft = convertCenterToTopLeft(
-      childTransform.x, childTransform.y, childTransform.rotation,
-      childTransform.scaleX, childTransform.scaleY
-    );
-    const scaleRatio = parentOriginalWidth / parentImage.width;
-    return { x: topLeft.x * scaleRatio, y: topLeft.y * scaleRatio };
+    const saved = displayToSaved(childTransform, childSize, ratio);
+    return { x: saved.offsetX, y: saved.offsetY };
   };
 
   // Report a transform to the parent dialog: top-left position in original parent
   // coordinates, scale corrected for the displayed parent's downsampling.
   // No-op until the parent image is loaded (matching the old drag/transform handlers).
-  const reportPlacement = (transform: { x: number; y: number; rotation: number; scaleX: number; scaleY: number }) => {
+  const reportPlacement = (transform: DisplayTransform) => {
     if (!parentOriginalWidth || !parentImage?.width) return;
-    const topLeft = convertCenterToTopLeft(transform.x, transform.y, transform.rotation, transform.scaleX, transform.scaleY);
-    const scaleRatio = parentOriginalWidth / parentImage.width;
-    onPlacementChange(
-      topLeft.x * scaleRatio,
-      topLeft.y * scaleRatio,
-      transform.rotation,
-      transform.scaleX * scaleRatio,
-      transform.scaleY * scaleRatio
-    );
+    const saved = displayToSaved(transform, childSize, ratio);
+    onPlacementChange(saved.offsetX, saved.offsetY, saved.rotation, saved.scaleX, saved.scaleY);
   };
 
   // Determine if resize handles should be shown based on scale method
@@ -228,145 +198,57 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // For "Trace Scale Bar", rotation is enabled but resize is not
   // (This is already handled by enableResizeHandles above, just noting for clarity)
 
-  // Load parent micrograph from the store and tile cache
+  // Parent micrograph metadata for the scale methods
   useEffect(() => {
-    console.log('[PlacementCanvas] Parent image loading effect triggered');
-    const loadParentImage = async () => {
-      try {
-        const { project } = useAppStore.getState();
-        if (!project) {
-          console.error('[PlacementCanvas] No project loaded');
-          return;
-        }
+    const micro = placementParent.parentMicrograph;
+    if (!micro) return;
+    setParentScale(micro.scalePixelsPerCentimeter ?? null);
+    setParentOriginalWidth(micro.imageWidth || micro.width || null);
+  }, [placementParent.parentMicrograph]);
 
-        // Find parent micrograph
-        let parentMicrograph = null;
-        outer: for (const dataset of project.datasets || []) {
-          for (const sample of dataset.samples || []) {
-            for (const micrograph of sample.micrographs || []) {
-              if (micrograph.id === parentMicrographId) {
-                parentMicrograph = micrograph;
-                break outer;
-              }
-            }
-          }
-        }
+  // The first time the parent's copy is shown: fit it in the canvas and put the overlay where it
+  // starts (a placement found automatically, a saved one, or the middle of the parent).
+  // `framePlaced` holds the auto-fit back until the overlay is in place; `autoFitAllowed` lets it
+  // resize only an overlay that starts in the middle (never a saved or found placement).
+  const placedFrameRef = useRef<HTMLImageElement | null>(null);
+  const autoFitAllowedRef = useRef(false);
+  const [framePlaced, setFramePlaced] = useState(false);
+  useEffect(() => {
+    const img = parentImage;
+    const micro = placementParent.parentMicrograph;
+    if (!img || !micro || placedFrameRef.current === img) return;
+    placedFrameRef.current = img;
 
-        if (!parentMicrograph || !parentMicrograph.imagePath) {
-          console.error('[PlacementCanvas] Parent micrograph not found or has no image path');
-          return;
-        }
+    const fit = Math.min(CANVAS_WIDTH / img.width, CANVAS_HEIGHT / img.height, 1);
+    setScale(fit);
+    setStagePos({ x: (CANVAS_WIDTH - img.width * fit) / 2, y: (CANVAS_HEIGHT - img.height * fit) / 2 });
 
-        // Store parent scale and original dimensions for calculations
-        if (parentMicrograph.scalePixelsPerCentimeter) {
-          setParentScale(parentMicrograph.scalePixelsPerCentimeter);
-          console.log('[PlacementCanvas] Parent scale:', parentMicrograph.scalePixelsPerCentimeter, 'px/cm');
-        }
-        if (parentMicrograph.imageWidth) {
-          setParentOriginalWidth(parentMicrograph.imageWidth);
-          console.log('[PlacementCanvas] Parent original width:', parentMicrograph.imageWidth, 'px');
-        }
-
-        // Build full path to parent image
-        const folderPaths = await window.api?.getProjectFolderPaths(project.id);
-        if (!folderPaths) return;
-        const fullParentPath = `${folderPaths.images}/${parentMicrograph.imagePath}`;
-
-        console.log('[PlacementCanvas] Loading parent from:', fullParentPath);
-
-        // Load the tiled image
-        const tileData = await window.api?.loadImageWithTiles(fullParentPath);
-        if (!tileData) return;
-
-        // Load thumbnail resolution for placement canvas (512x512 max)
-        // This is sufficient for an 800x600 canvas and uses much less memory
-        // than medium resolution (2048x2048) - roughly 16x less memory per image
-        const thumbnailDataUrl = await window.api?.loadThumbnail(tileData.hash);
-        if (!thumbnailDataUrl) return;
-
-        const img = new window.Image();
-        img.onload = () => {
-          setParentImage(img);
-
-          // Fit image to canvas initially
-          const scaleX = CANVAS_WIDTH / img.width;
-          const scaleY = CANVAS_HEIGHT / img.height;
-          const initialScale = Math.min(scaleX, scaleY, 1);
-          setScale(initialScale);
-
-          // Center image
-          const x = (CANVAS_WIDTH - img.width * initialScale) / 2;
-          const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
-          setStagePos({ x, y });
-
-          // Initialize child position
-          // Use parentMicrograph.imageWidth directly (not state, which may not be set yet)
-          const parentOrigWidth = parentMicrograph.imageWidth || img.width;
-
-          if (initialPlacement) {
-            // Shown in display pixels of the parent thumbnail
-            const ratio = img.width / parentOrigWidth;
-            const displayScale = initialPlacement.scale * ratio;
-            setChildTransform({
-              x: initialPlacement.offsetX * ratio + (childWidth * displayScale) / 2,
-              y: initialPlacement.offsetY * ratio + (childHeight * displayScale) / 2,
-              rotation: initialPlacement.rotation,
-              scaleX: displayScale,
-              scaleY: displayScale,
-            });
-          } else if ((initialOffsetX === 0 && initialOffsetY === 0) ||
-              (initialOffsetX === 400 && initialOffsetY === 300)) {
-            // These are the default values, so center the child on the parent
-            const centerX = img.width / 2;
-            const centerY = img.height / 2;
-            setChildTransform(prev => ({
-              ...prev,
-              x: centerX,
-              y: centerY,
-            }));
-            // Convert center to top-left for legacy compatibility
-            const topLeft = convertCenterToTopLeft(centerX, centerY, initialRotation, initialScaleX, initialScaleY);
-            // Convert to original image coordinates
-            const scaleRatio = parentOrigWidth / img.width;
-            const originalX = topLeft.x * scaleRatio;
-            const originalY = topLeft.y * scaleRatio;
-            onPlacementChange(originalX, originalY, initialRotation, initialScaleX, initialScaleY);
-            console.log('[PlacementCanvas] Initialized child position to center:', { centerX, centerY, topLeft, originalX, originalY, parentOrigWidth });
-          } else {
-            // We have existing values - convert from original image coordinates to displayed coordinates
-            const scaleRatio = img.width / parentOrigWidth;
-            // Initial values are in top-left format, convert to center
-            const centerX = (initialOffsetX * scaleRatio) + (childWidth * scaleRatio * initialScaleX) / 2;
-            const centerY = (initialOffsetY * scaleRatio) + (childHeight * scaleRatio * initialScaleY) / 2;
-            setChildTransform(prev => ({
-              ...prev,
-              x: centerX,
-              y: centerY,
-            }));
-            console.log('[PlacementCanvas] Initialized from existing values:', {
-              originalX: initialOffsetX,
-              originalY: initialOffsetY,
-              scaleRatio,
-              displayedCenterX: centerX,
-              displayedCenterY: centerY,
-            });
-          }
-
-          console.log('[PlacementCanvas] Parent image loaded:', {
-            width: img.width,
-            height: img.height,
-            initialScale,
-          });
-        };
-        img.src = thumbnailDataUrl;
-      } catch (error) {
-        console.error('[PlacementCanvas] Error loading parent image:', error);
-      }
-    };
-
-    loadParentImage();
+    const r = displayRatio(micro.imageWidth || micro.width || img.width, img.width);
+    const isDefault = (initialOffsetX === 0 && initialOffsetY === 0) || (initialOffsetX === 400 && initialOffsetY === 300);
+    autoFitAllowedRef.current = false;
+    if (initialPlacement) {
+      setChildTransform(savedToDisplay({
+        offsetX: initialPlacement.offsetX, offsetY: initialPlacement.offsetY, rotation: initialPlacement.rotation,
+        scaleX: initialPlacement.scale, scaleY: initialPlacement.scale,
+      }, childSize, r));
+    } else if (isDefault) {
+      // Start in the middle of the parent at one display px per child px; the auto-fit shrinks a
+      // child larger than the parent's copy
+      const centered = { x: img.width / 2, y: img.height / 2, rotation: initialRotation, scaleX: 1, scaleY: 1 };
+      setChildTransform(centered);
+      autoFitAllowedRef.current = true;
+      const saved = displayToSaved(centered, childSize, r);
+      onPlacementChangeRef.current(saved.offsetX, saved.offsetY, saved.rotation, saved.scaleX, saved.scaleY);
+    } else {
+      // A saved placement (original parent px, parent px per child px)
+      setChildTransform(savedToDisplay({
+        offsetX: initialOffsetX, offsetY: initialOffsetY, rotation: initialRotation,
+        scaleX: initialScaleX, scaleY: initialScaleY,
+      }, childSize, r));
+    }
+    setFramePlaced(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parentMicrographId]); // Only reload when parent ID changes, not on every offset/scale update
+  }, [parentImage, placementParent.parentMicrograph]);
 
   // Load child micrograph from project images folder
   useEffect(() => {
@@ -411,8 +293,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // For "Stretch and Drag", this becomes the working scale
   // For other methods, this is just initial display until user enters scale data
   useEffect(() => {
-    if (!parentImage || !childImage) return;
-    if (initialPlacement) return;
+    if (!parentImage || !childImage || !framePlaced) return;
+    if (initialPlacement || !autoFitAllowedRef.current) return;
     // Only auto-fit if scale is still at default (1.0) - don't override user adjustments or calculated scales
     if (childTransform.scaleX !== 1 || childTransform.scaleY !== 1) return;
 
@@ -456,77 +338,24 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // Only notify parent of the initial placement for "Stretch and Drag" mode
     // Other methods will calculate their own scale based on user input
     if (scaleMethod === 'Stretch and Drag') {
-      const topLeft = convertCenterToTopLeft(centerX, centerY, childTransform.rotation, fitScale, fitScale);
-      if (parentOriginalWidth && parentImage.width) {
-        const scaleRatio = parentOriginalWidth / parentImage.width;
-        const originalX = topLeft.x * scaleRatio;
-        const originalY = topLeft.y * scaleRatio;
-        // Apply the same parentDisplayRatio correction we use in handleChildTransformEnd
-        const parentDisplayRatio = parentOriginalWidth / parentImage.width;
-        const correctedScale = fitScale * parentDisplayRatio;
-        onPlacementChange(originalX, originalY, childTransform.rotation, correctedScale, correctedScale);
-      }
+      reportPlacement({ x: centerX, y: centerY, rotation: childTransform.rotation, scaleX: fitScale, scaleY: fitScale });
     }
-  }, [scaleMethod, parentImage, childImage, childWidth, childHeight, parentOriginalWidth, childTransform.scaleX, childTransform.scaleY]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scaleMethod, parentImage, childImage, childWidth, childHeight, parentOriginalWidth, childTransform.scaleX, childTransform.scaleY, framePlaced]);
 
   // Auto-calculate child scale for Pixel Conversion Factor method
   useEffect(() => {
     if (scaleMethod !== 'Pixel Conversion Factor') return;
     if (!parentScale || !parentOriginalWidth || !parentImage || !pixelInput || !physicalLengthInput) return;
 
-    const pixels = parseFloat(pixelInput);
-    const physicalLength = parseFloat(physicalLengthInput);
-
-    if (isNaN(pixels) || isNaN(physicalLength) || physicalLength === 0) return;
-
-    // Calculate child's pixels per unit
-    const childPixelsPerUnit = pixels / physicalLength;
-
-    // Convert to pixels per centimeter
-    const conversionToCm: { [key: string]: number } = {
-      'μm': 10000,
-      'mm': 10,
-      'cm': 1,
-      'm': 0.01,
-      'inches': 0.393701
-    };
-    const childPixelsPerCm = childPixelsPerUnit * (conversionToCm[unitInput] || 1);
-
-    // Account for parent downsampling
-    // The parent scale (px/cm) is for the original image, but we're displaying a downsampled version
-    const parentDownsampleRatio = parentImage.width / parentOriginalWidth;
-    const parentScaleInDisplayedImage = parentScale * parentDownsampleRatio;
-
-    // Calculate scale factor: parent scale / child scale
-    // If child is more zoomed in (higher px/cm), it should appear smaller on parent (scale < 1)
-    // If child is more zoomed out (lower px/cm), it should appear larger on parent (scale > 1)
-    let scaleFactor = parentScaleInDisplayedImage / childPixelsPerCm;
-
-    // Sanity checks: prevent wildly large or small scales
-    // Max scale: child can't be more than 10x the size of parent
-    // Min scale: child can't be less than 0.01x the size of parent
-    const MIN_SCALE = 0.01;
-    const MAX_SCALE = 10;
-
-    if (scaleFactor > MAX_SCALE) {
-      console.warn('[PlacementCanvas] Scale factor too large, clamping to', MAX_SCALE);
-      scaleFactor = MAX_SCALE;
-    } else if (scaleFactor < MIN_SCALE) {
-      console.warn('[PlacementCanvas] Scale factor too small, clamping to', MIN_SCALE);
-      scaleFactor = MIN_SCALE;
-    }
-
-    console.log('[PlacementCanvas] Pixel Conversion Factor calculation:', {
-      pixels,
-      physicalLength,
-      unit: unitInput,
-      childPixelsPerCm,
+    const result = overlayScaleOnDisplay({
+      childPxPerCm: childPixelsPerCm(parseFloat(pixelInput), parseFloat(physicalLengthInput), unitInput),
       parentScale,
-      parentDownsampleRatio,
-      parentScaleInDisplayedImage,
-      scaleFactor,
-      clamped: scaleFactor !== parentScaleInDisplayedImage / childPixelsPerCm,
+      parentDisplayedWidth: parentImage.width,
+      parentOriginalWidth,
     });
+    if (!result) return;
+    const scaleFactor = result.scale;
 
     // Update child scale (without calling onPlacementChange during render)
     setChildTransform(prev => ({
@@ -550,22 +379,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // Only call if scale actually changed (not just position)
     if (childTransform.scaleX !== prevScaleRef.current.scaleX ||
         childTransform.scaleY !== prevScaleRef.current.scaleY) {
-      // Convert center position to top-left for legacy compatibility
-      const topLeft = convertCenterToTopLeft(childTransform.x, childTransform.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
-
-      // Convert from displayed coordinates to original parent coordinates
-      if (!parentOriginalWidth || !parentImage?.width) {
-        onPlacementChangeRef.current(topLeft.x, topLeft.y, childTransform.rotation, childTransform.scaleX, childTransform.scaleY);
-      } else {
-        const scaleRatio = parentOriginalWidth / parentImage.width;
-        const originalX = topLeft.x * scaleRatio;
-        const originalY = topLeft.y * scaleRatio;
-        // childTransform.scaleX is relative to the displayed (downsampled) parent;
-        // report it relative to the original parent, matching the drag/transform handlers
-        const correctedScaleX = childTransform.scaleX * scaleRatio;
-        const correctedScaleY = childTransform.scaleY * scaleRatio;
-        onPlacementChangeRef.current(originalX, originalY, childTransform.rotation, correctedScaleX, correctedScaleY);
-      }
+      // Top-left and scale in original parent pixels (src/utils/placementMath.ts); nothing until
+      // the parent's copy is loaded (a ratio of 1 would report display pixels as original ones)
+      if (!parentOriginalWidth || !parentImage?.width) return;
+      const saved = displayToSaved(childTransform, childSize, ratio);
+      onPlacementChangeRef.current(saved.offsetX, saved.offsetY, saved.rotation, saved.scaleX, saved.scaleY);
       prevScaleRef.current = { scaleX: childTransform.scaleX, scaleY: childTransform.scaleY };
     }
   }, [scaleMethod, childTransform.scaleX, childTransform.scaleY, childTransform.x, childTransform.y, childTransform.rotation, parentOriginalWidth, parentImage]);
@@ -579,74 +397,30 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     const height = parseFloat(heightInput);
     const aspectRatio = childWidth / childHeight;
 
-    // Convert to pixels per centimeter
-    const conversionToCm: { [key: string]: number } = {
-      'μm': 10000,
-      'mm': 10,
-      'cm': 1,
-      'm': 0.01,
-      'inches': 0.393701
-    };
-
-    let childPixelsPerCm: number | null = null;
-
+    let childPxPerCm: number | null = null;
     if (!isNaN(width) && width > 0) {
-      // Calculate based on width
-      const childPixelsPerUnit = childWidth / width;
-      childPixelsPerCm = childPixelsPerUnit * (conversionToCm[sizeUnitInput] || 1);
-
-      // Auto-populate height if not already set
+      // From the width; the height follows the image's proportions
+      childPxPerCm = childPixelsPerCm(childWidth, width, sizeUnitInput);
       const calculatedHeight = (width / aspectRatio).toFixed(2);
       if (heightInput !== calculatedHeight) {
         setHeightInput(calculatedHeight);
       }
     } else if (!isNaN(height) && height > 0) {
-      // Calculate based on height
-      const childPixelsPerUnit = childHeight / height;
-      childPixelsPerCm = childPixelsPerUnit * (conversionToCm[sizeUnitInput] || 1);
-
-      // Auto-populate width if not already set
+      childPxPerCm = childPixelsPerCm(childHeight, height, sizeUnitInput);
       const calculatedWidth = (height * aspectRatio).toFixed(2);
       if (widthInput !== calculatedWidth) {
         setWidthInput(calculatedWidth);
       }
     }
 
-    if (!childPixelsPerCm) return;
-
-    // Account for parent downsampling
-    // The parent scale (px/cm) is for the original image, but we're displaying a downsampled version
-    const parentDownsampleRatio = parentImage.width / parentOriginalWidth;
-    const parentScaleInDisplayedImage = parentScale * parentDownsampleRatio;
-
-    // Calculate scale factor: parent scale / child scale
-    // If child is more zoomed in (higher px/cm), it should appear smaller on parent (scale < 1)
-    // If child is more zoomed out (lower px/cm), it should appear larger on parent (scale > 1)
-    let scaleFactor = parentScaleInDisplayedImage / childPixelsPerCm;
-
-    // Sanity checks: prevent wildly large or small scales
-    const MIN_SCALE = 0.01;
-    const MAX_SCALE = 10;
-
-    if (scaleFactor > MAX_SCALE) {
-      console.warn('[PlacementCanvas] Scale factor too large, clamping to', MAX_SCALE);
-      scaleFactor = MAX_SCALE;
-    } else if (scaleFactor < MIN_SCALE) {
-      console.warn('[PlacementCanvas] Scale factor too small, clamping to', MIN_SCALE);
-      scaleFactor = MIN_SCALE;
-    }
-
-    console.log('[PlacementCanvas] Width/Height calculation:', {
-      width,
-      height,
-      unit: sizeUnitInput,
-      childPixelsPerCm,
+    const result = overlayScaleOnDisplay({
+      childPxPerCm,
       parentScale,
-      parentDownsampleRatio,
-      parentScaleInDisplayedImage,
-      scaleFactor,
-      clamped: scaleFactor !== parentScaleInDisplayedImage / childPixelsPerCm,
+      parentDisplayedWidth: parentImage.width,
+      parentOriginalWidth,
     });
+    if (!result) return;
+    const scaleFactor = result.scale;
 
     // Update child scale (without calling onPlacementChange during render)
     setChildTransform(prev => ({
@@ -654,7 +428,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       scaleX: scaleFactor,
       scaleY: scaleFactor,
     }));
-  }, [scaleMethod, widthInput, heightInput, sizeUnitInput, parentScale, childWidth, childHeight]);
+    // parentImage: worked out again once the parent's copy has loaded
+  }, [scaleMethod, widthInput, heightInput, sizeUnitInput, parentScale, childWidth, childHeight, parentImage, parentOriginalWidth]);
 
   // Auto-calculate child scale for Trace Scale Bar method
   useEffect(() => {
@@ -746,7 +521,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     // If line tool is active, start drawing a line
     if (activeTool === 'line' && scaleMethod === 'Trace Scale Bar and Drag') {
       const clickedOnEmpty = e.target === e.target.getStage();
-      const clickedOnParent = e.target.attrs?.image === parentImage;
+      const clickedOnParent = !!shownParentImage && e.target.attrs?.image === shownParentImage;
       const clickedOnChild = e.target.attrs?.image === childImage;
 
       // Allow line drawing on empty space, parent image, OR child overlay
@@ -765,7 +540,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
     // Allow panning when clicking on empty space OR the parent image (but not the child overlay)
     const clickedOnEmpty = e.target === e.target.getStage();
-    const clickedOnParent = e.target.attrs?.image === parentImage;
+    const clickedOnParent = !!shownParentImage && e.target.attrs?.image === shownParentImage;
 
     if (clickedOnEmpty || clickedOnParent) {
       setIsPanning(true);
@@ -921,18 +696,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
       // so X/Y are unaffected by a rotation edit
       newTransform = { ...childTransform, rotation: value };
     } else {
-      const scaleRatio = parentOriginalWidth / parentImage.width;
-      const currentTopLeft = convertCenterToTopLeft(
-        childTransform.x, childTransform.y, childTransform.rotation,
-        childTransform.scaleX, childTransform.scaleY
-      );
-      const displayedTopLeftX = field === 'x' ? value / scaleRatio : currentTopLeft.x;
-      const displayedTopLeftY = field === 'y' ? value / scaleRatio : currentTopLeft.y;
-      const center = convertTopLeftToCenter(
-        displayedTopLeftX, displayedTopLeftY,
-        childTransform.scaleX, childTransform.scaleY
-      );
-      newTransform = { ...childTransform, x: center.x, y: center.y };
+      const saved = displayToSaved(childTransform, childSize, ratio);
+      const edited = { ...saved, offsetX: field === 'x' ? value : saved.offsetX, offsetY: field === 'y' ? value : saved.offsetY };
+      newTransform = savedToDisplay(edited, childSize, ratio);
     }
 
     setChildTransform(newTransform);
@@ -951,10 +717,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
     };
 
     setChildTransform(resetTransform);
-
-    // Convert center to top-left for legacy compatibility
-    const topLeft = convertCenterToTopLeft(resetTransform.x, resetTransform.y, resetTransform.rotation, resetTransform.scaleX, resetTransform.scaleY);
-    onPlacementChange(topLeft.x, topLeft.y, resetTransform.rotation, resetTransform.scaleX, resetTransform.scaleY);
+    // In original parent pixels like every other change (it used to report display pixels)
+    reportPlacement(resetTransform);
 
     if (childGroupRef.current) {
       childGroupRef.current.position({ x: resetTransform.x, y: resetTransform.y });
@@ -974,6 +738,7 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
   // Top-left in original parent pixels for the editable coordinate fields
   // (null until both images are loaded)
   const originalPlacement = getOriginalPlacement();
+  const savedScale = childTransform.scaleX * ratio;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%', alignItems: 'center' }}>
@@ -1265,8 +1030,9 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         </Paper>
       )}
 
-      {/* Opacity Slider */}
+      {/* Opacity Slider (and the PPL | XPL switch for a parent that is half of a pair) */}
       <Box sx={{ width: CANVAS_WIDTH, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <PlacementBackdropToggle placementParent={placementParent} />
         <Typography
           variant="body2"
           sx={{
@@ -1299,6 +1065,12 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
 
       {/* Canvas */}
       <Box
+        data-testid="placement-canvas"
+        data-frame-width={parentImage?.width ?? ''}
+        data-zoom={scale}
+        data-stage-x={stagePos.x}
+        data-stage-y={stagePos.y}
+        data-showing={placementParent.backdrop?.showingPartner ? placementParent.backdrop.partnerLabel : placementParent.backdrop?.parentLabel ?? ''}
         sx={{
           width: CANVAS_WIDTH,
           height: CANVAS_HEIGHT,
@@ -1329,9 +1101,11 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
             y={stagePos.y}
           >
             {/* Parent micrograph (background) */}
-            {parentImage && (
+            {/* Parent micrograph (background): its own copy or the other half of its PPL/XPL
+                pair, always drawn over the parent's frame */}
+            {parentImage && shownParentImage && (
               <KonvaImage
-                image={parentImage}
+                image={shownParentImage}
                 width={parentImage.width}
                 height={parentImage.height}
               />
@@ -1462,7 +1236,8 @@ const PlacementCanvas: React.FC<PlacementCanvasProps> = ({
         <Typography variant="caption" sx={{
           color: 'text.secondary'
         }}>
-          Scale: {childTransform.scaleX >= 0.01 ? childTransform.scaleX.toFixed(2) : childTransform.scaleX.toPrecision(2)}x | Zoom: {(scale * 100).toFixed(0)}%
+          {/* The saved scale (parent px per child px), the same whatever size the parent's copy is */}
+          Scale: {savedScale >= 0.01 ? savedScale.toFixed(2) : savedScale.toPrecision(2)}x | Zoom: {(scale * 100).toFixed(0)}%
         </Typography>
       </Stack>
     </Box>

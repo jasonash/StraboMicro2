@@ -182,11 +182,14 @@ const Viewer: React.FC = () => {
       // 1. Key is X, without Cmd/Ctrl/Alt (Cmd+X is Cut)
       // 2. Quick Classify toolbar is NOT visible
       // 3. Not in an input field
-      // 4. Active micrograph has a sibling
+      // 4. No dialog is open (the placement screens have their own PPL | XPL
+      //    switch on X; the viewer behind a dialog must not change)
+      // 5. Active micrograph has a sibling
       if (
         e.key.toLowerCase() === 'x' &&
         !e.metaKey && !e.ctrlKey && !e.altKey &&
         !quickClassifyVisible &&
+        !document.querySelector('.MuiDialog-root') &&
         !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)
       ) {
         const siblingId = getSiblingId(activeMicrographId);
