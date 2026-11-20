@@ -188,9 +188,15 @@ test('approximate point with X on the keyboard, and the switch in 3-Point Regist
   const canvas = edit.getByTestId('placement-canvas');
   await expect(canvas).toHaveAttribute('data-frame-width', '2048', { timeout: 30_000 });
   await expect(canvas).toHaveAttribute('data-showing', 'PPL');
+  // The main viewer behind the dialog shows the PPL; X must not switch it too
+  const viewerSide = () => ana.state(new Function('e', 'const s = e.app.getState(); return [s.activeMicrographId, s.siblingViewActive]') as never);
+  const viewerBefore = await viewerSide();
+  expect((viewerBefore as unknown as unknown[])[0]).toBe(overviewId);
   await canvas.hover();
   await ana.page.keyboard.press('x');
   await expect(canvas).toHaveAttribute('data-showing', 'XPL');
+  await ana.page.waitForTimeout(500);
+  expect(await viewerSide()).toEqual(viewerBefore);
 
   await ana.caption('places the point at (1700, 600) of the parent, 1280 px = 64 μm, Save');
   await edit.getByRole('button', { name: 'Point Tool (Click to Place Location)' }).click();
