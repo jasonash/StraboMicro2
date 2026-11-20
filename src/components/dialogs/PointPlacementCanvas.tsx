@@ -3,8 +3,10 @@ import { Stage, Layer, Image as KonvaImage, Circle, Line } from 'react-konva';
 import { Box, Stack, IconButton, Tooltip, Paper, TextField, Select, MenuItem, FormControl, InputLabel, Typography, Grid } from '@mui/material';
 import { PanTool, Timeline, ZoomIn, ZoomOut, RestartAlt, Place } from '@mui/icons-material';
 import Konva from 'konva';
-import { useAppStore } from '@/store';
 import { releaseImage } from '@/utils/imageUtils';
+import { usePlacementParent } from '@/hooks/usePlacementParent';
+import { displayRatio, displayPointToSaved, savedPointToDisplay } from '@/utils/placementMath';
+import { PlacementBackdropToggle } from './PlacementBackdropToggle';
 import { useLatest } from '@/hooks/useLatest';
 import { wheelZoomDirection } from '@/utils/wheelZoom';
 
@@ -44,18 +46,15 @@ export const PointPlacementCanvas = ({
   initialPixelConversion,
   onScaleDataChange,
 }: PointPlacementCanvasProps) => {
-  const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
+  // The parent's medium copy is the display frame (src/utils/placementMath.ts); for a PPL/XPL
+  // pair the other half can be shown instead, over the same frame (usePlacementParent)
+  const placementParent = usePlacementParent(parentMicrographId);
+  const parentImage = placementParent.frameImage;
+  const shownParentImage = placementParent.shownImage;
   const [childImage, setChildImage] = useState<HTMLImageElement | null>(null);
-  const [_parentScale, setParentScale] = useState<number>(0); // Currently unused but may be needed
 
-  // Store refs to track images for cleanup (avoid stale closure issues)
-  const parentImageRef = useRef<HTMLImageElement | null>(null);
+  // Store a ref to track the child image for cleanup (the hook releases the parent's)
   const childImageRef = useRef<HTMLImageElement | null>(null);
-
-  // Keep refs in sync with state
-  useEffect(() => {
-    parentImageRef.current = parentImage;
-  }, [parentImage]);
 
   useEffect(() => {
     childImageRef.current = childImage;
@@ -64,16 +63,11 @@ export const PointPlacementCanvas = ({
   // Cleanup Image objects on unmount only (empty dependency array)
   useEffect(() => {
     return () => {
-      if (parentImageRef.current) {
-        releaseImage(parentImageRef.current);
-      }
       if (childImageRef.current) {
         releaseImage(childImageRef.current);
       }
     };
   }, []);
-  const [parentOriginalWidth, setParentOriginalWidth] = useState<number>(0);
-
   // Stage pan/zoom state
   const [scale, setScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -117,79 +111,20 @@ export const PointPlacementCanvas = ({
 
   const stageRef = useRef<Konva.Stage>(null);
 
-  // Load parent image
+  // Original parent width (imageWidth, else the legacy width; 0 until known)
+  const parentOriginalWidth = placementParent.parentMicrograph?.imageWidth || placementParent.parentMicrograph?.width || 0;
+  // Original parent px per displayed px
+  const ratio = displayRatio(parentOriginalWidth, parentImage?.width);
+
+  // Fit the parent's copy in the canvas when it first loads
+  const fittedFrameRef = useRef<HTMLImageElement | null>(null);
   useEffect(() => {
-    const loadParentImage = async () => {
-      try {
-        const { project } = useAppStore.getState();
-        if (!project) {
-          console.error('[PointPlacementCanvas] No project loaded');
-          return;
-        }
-
-        // Find parent micrograph
-        let parentMicrograph = null;
-        outer: for (const dataset of project.datasets || []) {
-          for (const sample of dataset.samples || []) {
-            for (const micrograph of sample.micrographs || []) {
-              if (micrograph.id === parentMicrographId) {
-                parentMicrograph = micrograph;
-                break outer;
-              }
-            }
-          }
-        }
-
-        if (!parentMicrograph || !parentMicrograph.imagePath) {
-          console.error('[PointPlacementCanvas] Parent micrograph not found or has no image path');
-          return;
-        }
-
-        // Store parent scale and original dimensions for calculations
-        if (parentMicrograph.scalePixelsPerCentimeter) {
-          setParentScale(parentMicrograph.scalePixelsPerCentimeter);
-        }
-        if (parentMicrograph.imageWidth) {
-          setParentOriginalWidth(parentMicrograph.imageWidth);
-        }
-
-        // Build full path to parent image
-        const folderPaths = await window.api?.getProjectFolderPaths(project.id);
-        if (!folderPaths) return;
-        const fullParentPath = `${folderPaths.images}/${parentMicrograph.imagePath}`;
-
-        // Load the tiled image
-        const tileData = await window.api?.loadImageWithTiles(fullParentPath);
-        if (!tileData) return;
-
-        // Load thumbnail resolution for placement canvas (512x512 max)
-        // This is sufficient for an 800x600 canvas and uses much less memory
-        const thumbnailDataUrl = await window.api?.loadThumbnail(tileData.hash);
-        if (!thumbnailDataUrl) return;
-
-        const img = new window.Image();
-        img.onload = () => {
-          setParentImage(img);
-
-          // Fit thumbnail to canvas
-          const scaleX = CANVAS_WIDTH / img.width;
-          const scaleY = CANVAS_HEIGHT / img.height;
-          const initialScale = Math.min(scaleX, scaleY, 1);
-          setScale(initialScale);
-
-          // Center image
-          const x = (CANVAS_WIDTH - img.width * initialScale) / 2;
-          const y = (CANVAS_HEIGHT - img.height * initialScale) / 2;
-          setStagePos({ x, y });
-        };
-        img.src = thumbnailDataUrl;
-      } catch (error) {
-        console.error('[PointPlacementCanvas] Failed to load parent image:', error);
-      }
-    };
-
-    loadParentImage();
-  }, [parentMicrographId]);
+    if (!parentImage || fittedFrameRef.current === parentImage) return;
+    fittedFrameRef.current = parentImage;
+    const fit = Math.min(CANVAS_WIDTH / parentImage.width, CANVAS_HEIGHT / parentImage.height, 1);
+    setScale(fit);
+    setStagePos({ x: (CANVAS_WIDTH - parentImage.width * fit) / 2, y: (CANVAS_HEIGHT - parentImage.height * fit) / 2 });
+  }, [parentImage]);
 
   // Load child image (only for Trace Scale Bar method)
   useEffect(() => {
@@ -224,14 +159,9 @@ export const PointPlacementCanvas = ({
   useEffect(() => {
     if (!parentImage || !parentOriginalWidth || initialized) return;
 
-    // Calculate scale ratio
-    const scaleRatio = parentImage.width / parentOriginalWidth;
-
     // If we have initial values (editing existing), convert from original to displayed coordinates
     if (initialOffsetX !== 0 || initialOffsetY !== 0) {
-      const displayedX = initialOffsetX * scaleRatio;
-      const displayedY = initialOffsetY * scaleRatio;
-      setPointPos({ x: displayedX, y: displayedY });
+      setPointPos(savedPointToDisplay(initialOffsetX, initialOffsetY, ratio));
       // Child overlay stays centered - don't move it to the point position
     }
 
@@ -241,7 +171,7 @@ export const PointPlacementCanvas = ({
     setChildOverlayPos({ x: centerX, y: centerY });
 
     setInitialized(true);
-  }, [parentImage, parentOriginalWidth, initialOffsetX, initialOffsetY, initialized]);
+  }, [parentImage, parentOriginalWidth, initialOffsetX, initialOffsetY, initialized, ratio]);
 
   // Auto-fit child overlay to parent when child image loads (for Trace Scale Bar method)
   useEffect(() => {
@@ -380,11 +310,8 @@ export const PointPlacementCanvas = ({
         setPointPos({ x: imageX, y: imageY });
 
         // Convert from displayed image coordinates to original image coordinates
-        const scaleRatio = parentOriginalWidth / (parentImage?.width || 1);
-        const originalX = imageX * scaleRatio;
-        const originalY = imageY * scaleRatio;
-
-        onPlacementChange(originalX, originalY);
+        const saved = displayPointToSaved(imageX, imageY, ratio);
+        onPlacementChange(saved.x, saved.y);
         // Switch back to pan tool after placing the point
         setActiveTool('pan');
       }
@@ -456,11 +383,8 @@ export const PointPlacementCanvas = ({
   const handleMouseUp = () => {
     if (isDraggingPoint && pointPos) {
       // Finished dragging point - convert to original image coordinates and notify parent
-      const scaleRatio = parentOriginalWidth / (parentImage?.width || 1);
-      const originalX = pointPos.x * scaleRatio;
-      const originalY = pointPos.y * scaleRatio;
-
-      onPlacementChange(originalX, originalY);
+      const saved = displayPointToSaved(pointPos.x, pointPos.y, ratio);
+      onPlacementChange(saved.x, saved.y);
       setIsDraggingPoint(false);
       setLastPanPos(null);
       return;
@@ -609,6 +533,8 @@ export const PointPlacementCanvas = ({
           )}
 
           <Box sx={{ flexGrow: 1 }} />
+
+          <PlacementBackdropToggle placementParent={placementParent} />
 
           <Tooltip title="Zoom In">
             <IconButton size="small" onClick={handleZoomIn}>
@@ -809,6 +735,12 @@ export const PointPlacementCanvas = ({
 
       {/* Canvas */}
       <Box
+        data-testid="placement-canvas"
+        data-frame-width={parentImage?.width ?? ''}
+        data-zoom={scale}
+        data-stage-x={stagePos.x}
+        data-stage-y={stagePos.y}
+        data-showing={placementParent.backdrop?.showingPartner ? placementParent.backdrop.partnerLabel : placementParent.backdrop?.parentLabel ?? ''}
         sx={{
           width: CANVAS_WIDTH,
           height: CANVAS_HEIGHT,
@@ -838,10 +770,11 @@ export const PointPlacementCanvas = ({
             x={stagePos.x}
             y={stagePos.y}
           >
-            {/* Parent micrograph (background) */}
-            {parentImage && (
+            {/* Parent micrograph (background): its own copy or the other half of its PPL/XPL
+                pair, always drawn over the parent's frame */}
+            {parentImage && shownParentImage && (
               <KonvaImage
-                image={parentImage}
+                image={shownParentImage}
                 width={parentImage.width}
                 height={parentImage.height}
               />

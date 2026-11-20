@@ -20,6 +20,10 @@
  *
  * The folder moves into the account folder (§11.4), so the project must
  * not be loaded while linkToServer or adoptLegacy runs.
+ *
+ * The local project.json is taken in the app's own form (inAppFormat): a v1
+ * copy, imported and never saved, differs from the server's copy only in
+ * form, and every entity would differ.
  */
 
 const fs = require('fs');
@@ -34,6 +38,7 @@ const { readProjectFiles } = require('./syncEngine');
 const { stateFromEntry, downloadTarget, downloadFiles, normalizeBaseOrder } = require('./pull');
 const { hashFile } = require('./client');
 const { moveProjectToAccount } = require('../projectCopies');
+const { inAppFormat, rewriteInAppFormat } = require('../projectSerializer');
 
 /** The local-only folder of a project (linking starts from there) */
 function localFolder(projectId) {
@@ -67,7 +72,7 @@ async function compareWithServer({ projectId, pid, client, onProgress = () => {}
   const { base, snap, projectId: serverProjectId } = await serverBase(client, pid, folder);
   if (serverProjectId !== projectId) throw new Error('The server project is a different project');
   const { project, pointCounts } = await readProjectFiles(folder);
-  const current = explode(project, pointCounts);
+  const current = explode(inAppFormat(project), pointCounts);
 
   const differing = new Set(planPush(base, current).map((p) => p.key));
 
@@ -121,6 +126,7 @@ async function compareWithServer({ projectId, pid, client, onProgress = () => {}
 async function linkToServer({ projectId, pid, restServer, user, mode, use, client, saveVersion = async () => {}, onProgress = () => {} }) {
   const from = localFolder(projectId);
   if (!fs.existsSync(path.join(from, 'project.json'))) throw new Error('There is no local-only copy of this project');
+  await rewriteInAppFormat(path.join(from, 'project.json'));
   const { snap, base, projectId: serverProjectId } = await serverBase(client, pid, from);
   if (serverProjectId !== projectId) throw new Error('The server project is a different project');
 
@@ -181,6 +187,7 @@ async function linkToServer({ projectId, pid, restServer, user, mode, use, clien
  */
 async function adoptLegacy({ projectId, pid, restServer, user, mode, client }) {
   if (!fs.existsSync(path.join(localFolder(projectId), 'project.json'))) throw new Error('There is no local-only copy of this project');
+  await rewriteInAppFormat(path.join(localFolder(projectId), 'project.json'));
   await client.adopt(pid);
   const folder = await moveProjectToAccount(projectId, restServer, user.pkey);
   const state = sidecar.newState({ server: restServer, pkey: Number(user.pkey), email: user.email, pid, straboId: projectId }, mode);

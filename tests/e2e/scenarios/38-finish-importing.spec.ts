@@ -51,11 +51,13 @@ async function start(launch: (l: string, a: typeof ACCOUNTS.ana, o?: { login?: b
 }
 
 /** A micrograph as saved in the store, by name */
+// An empty image type counts as none: since 484dccc an opened .smz is rewritten in the saved
+// (legacy) form, which writes a missing imageType as "" (the app tests it as empty either way)
 async function saved(copy: Copy, name: string): Promise<Fields> {
   return (await copy.state(new Function('e', `
     for (const d of e.app.getState().project?.datasets ?? []) for (const s of d.samples ?? [])
       for (const m of s.micrographs ?? []) if (m.name === ${JSON.stringify(name)}) return {
-        needsInstrumentInfo: !!m.needsInstrumentInfo, imageType: m.imageType ?? null,
+        needsInstrumentInfo: !!m.needsInstrumentInfo, imageType: m.imageType || null,
         instrumentType: m.instrument?.instrumentType ?? null, brand: m.instrument?.instrumentBrand ?? null,
         offset: m.offsetInParent ?? null, scale: m.scalePixelsPerCentimeter ?? null,
         width: m.imageWidth, height: m.imageHeight };

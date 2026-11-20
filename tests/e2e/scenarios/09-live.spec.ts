@@ -18,7 +18,7 @@ import { execFileSync } from 'child_process';
 import { test, expect } from '../lib/test';
 import { ACCOUNTS, type Copy } from '../lib/copy';
 import {
-  share, waitSettled, spotField, editSpot, syncChip, collaborators, removeMember, separateCopyNotice, viewMicrograph, openActivity,
+  share, waitSettled, spotField, editSpot, syncChip, removeMember, separateCopyNotice, viewMicrograph, openActivity,
 } from '../lib/actions';
 
 /** Polling every 10 minutes: anything arriving sooner came over the live channel */
@@ -52,14 +52,17 @@ test('an edit arrives over the live channel; an open dialog holds it; removal is
   await waitSettled(ana);
   await waitSettled(ben);
 
-  // Ben has a dialog open: Ana's next change waits for it, and Ben is told who made it
-  const dialog = await collaborators(ben);
+  // Ben has a dialog open: Ana's next change waits for it, and Ben is told who made it. An
+  // editing dialog on the other spot (Collaborators no longer holds sync since 0ee531f: it edits
+  // no project data, data-sync-continues)
+  await viewMicrograph(ben, p.micrographId);
+  const dialog = await openEditSpot(ben, p.spots[1].id);
   await editSpot(ana, spot.id, { name: 'Live 2' });
   await ben.caption('has a dialog open while the change comes in');
   await expect.poll(() => ben.state((e) => e.sync.getState().notice), { timeout: 10_000 })
     .toBe(`${ACCOUNTS.ana.name} made 1 change; it'll appear when you close this dialog.`);
   expect(await spotField(ben, spot.id, 'name')).toBe('Live 1');
-  await dialog.getByRole('button', { name: 'Close' }).click();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toBeHidden();
   await ben.caption('closes the dialog: the change appears');
   await expect.poll(() => spotField(ben, spot.id, 'name'), { timeout: 5_000 }).toBe('Live 2');

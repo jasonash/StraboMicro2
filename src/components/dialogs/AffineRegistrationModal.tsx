@@ -43,6 +43,8 @@ import {
   type AffineMatrix,
 } from '@/utils/affineTransform';
 import { wheelZoomDirection } from '@/utils/wheelZoom';
+import { usePlacementParent } from '@/hooks/usePlacementParent';
+import { PlacementBackdropToggle } from './PlacementBackdropToggle';
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 10;
@@ -130,6 +132,12 @@ export function AffineRegistrationModal({
 
   // Images for display
   const [parentImage, setParentImage] = useState<HTMLImageElement | null>(null);
+  // For a parent that is half of a PPL/XPL pair, the other half can be shown instead; it is
+  // drawn at the parent's size like the parent's own copy, so the points do not move
+  const placementParent = usePlacementParent(parentMicrographId, open);
+  const displayedParentImage = placementParent.backdrop?.showingPartner && placementParent.shownImage
+    ? placementParent.shownImage
+    : parentImage;
   const [overlayImage, setOverlayImage] = useState<HTMLImageElement | null>(null);
 
   // Panel states (independent pan/zoom)
@@ -408,7 +416,7 @@ export function AffineRegistrationModal({
 
   // Generate preview composite image (offscreen)
   useEffect(() => {
-    if (!parentImage || !overlayImage || !parentImageData) {
+    if (!displayedParentImage || !overlayImage || !parentImageData) {
       setPreviewCompositeImage(null);
       return;
     }
@@ -422,7 +430,7 @@ export function AffineRegistrationModal({
     if (!ctx) return;
 
     // Draw parent image at full size
-    ctx.drawImage(parentImage, 0, 0, parentImageData.width, parentImageData.height);
+    ctx.drawImage(displayedParentImage, 0, 0, parentImageData.width, parentImageData.height);
 
     // Draw transformed overlay if we have a valid matrix
     if (computedMatrix && overlayImageData) {
@@ -449,7 +457,7 @@ export function AffineRegistrationModal({
     };
     img.src = dataUrl;
 
-  }, [parentImage, overlayImage, parentImageData, overlayImageData, computedMatrix]);
+  }, [displayedParentImage, overlayImage, parentImageData, overlayImageData, computedMatrix]);
 
   // Center preview when size and image are available
   useEffect(() => {
@@ -1084,6 +1092,8 @@ export function AffineRegistrationModal({
           }}>
             3-Point Registration
           </Typography>
+
+          <PlacementBackdropToggle placementParent={placementParent} />
         </Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1137,7 +1147,7 @@ export function AffineRegistrationModal({
                 parentPanel,
                 parentPanelSize,
                 parentImageData,
-                parentImage
+                displayedParentImage
               )}
               {renderPanel(
                 'overlay',

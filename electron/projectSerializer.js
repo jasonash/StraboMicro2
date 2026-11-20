@@ -498,6 +498,37 @@ function toAppProject(legacyJson) {
 }
 
 /**
+ * project.json content in the app's own form, exactly as a save writes it
+ * (numbers rounded, empty defaults filled in), times kept as they are.
+ * A v1 file, or one an older app wrote, differs from the server's copy of
+ * the same project only in form; sync compares files as they are.
+ * @param {Object} legacyJson - Parsed project.json (not modified)
+ * @returns {Object} Plain JSON (no undefined values)
+ */
+function inAppFormat(legacyJson) {
+  return JSON.parse(JSON.stringify(serializeToLegacyFormat(toAppProject(legacyJson))));
+}
+
+/**
+ * Rewrite a project.json in the app's own form (inAppFormat). Not an edit:
+ * no new modified times (a save would stamp the project and its datasets,
+ * and those would then differ from the server's copy).
+ * @param {string} projectJsonPath
+ * @returns {Promise<boolean>} Whether the file changed
+ */
+async function rewriteInAppFormat(projectJsonPath) {
+  const legacyJson = JSON.parse(await fs.promises.readFile(projectJsonPath, 'utf8'));
+  const normalized = inAppFormat(legacyJson);
+  // Required here: the server PDF service vendors this file and never saves
+  const { deepEqual } = require('./deepEqual');
+  if (deepEqual(legacyJson, normalized)) return false;
+  const { writeFileAtomic } = require('./atomicFile');
+  await writeFileAtomic(projectJsonPath, JSON.stringify(normalized, null, 2), 'utf8');
+  log.info(`[ProjectSerializer] Rewrote ${projectJsonPath} in the app's own format`);
+  return true;
+}
+
+/**
  * Convert internal project format to legacy JSON format
  * @param {Object} project - Project from Zustand store
  * @returns {Object} Legacy format JSON
@@ -929,4 +960,6 @@ module.exports = {
   deserializeFromLegacyFormat,
   prepareProjectJson,
   toAppProject,
+  inAppFormat,
+  rewriteInAppFormat,
 };

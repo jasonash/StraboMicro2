@@ -3389,6 +3389,9 @@ export const NewMicrographDialog: React.FC<NewMicrographDialogProps> = ({
             initialOffsetX={formData.offsetInParent.X}
             initialOffsetY={formData.offsetInParent.Y}
             initialRotation={formData.rotationAngle}
+            // The saved scale (parent px per child px), so a step back and forth keeps the size
+            initialScaleX={formData.scaleX}
+            initialScaleY={formData.scaleY}
             initialOpacity={formData.opacity}
             onPlacementChange={handlePlacementChange}
             onOpacityChange={handleOpacityChange}

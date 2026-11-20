@@ -76,6 +76,12 @@ const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000].map((m
 const SLOW_RETRY_MS = e2eMs(10 * 60_000, 10_000);
 /** Manual mode: recount the changes waiting this long after editing pauses */
 const RECOUNT_MS = 1_000;
+/**
+ * An open dialog holds sync up (an edit in it could be reverted by a pull),
+ * except the decisions dialog (16aa) and dialogs that edit no project data
+ * (data-sync-continues: Collaborators, which waits for the first upload)
+ */
+const HOLDING_DIALOG = '.MuiDialog-root:not([data-sync-decisions]):not([data-sync-continues])';
 /** How often a pull waiting for an open edit checks again */
 const EDIT_POLL_MS = 1_000;
 /** Pulls dropped because the user kept editing, before giving up for this cycle */
@@ -803,15 +809,17 @@ class ProjectSync {
       return true;
     }
     // The decisions dialog does not hold sync up (everything else keeps syncing, 16aa)
-    if (document.querySelector('.MuiDialog-root:not([data-sync-decisions])')) return true;
+    if (document.querySelector(HOLDING_DIALOG)) return true;
     const el = document.activeElement;
     if (!(el instanceof HTMLElement)) return false;
+    // Typing in a dialog that edits no project data (Collaborators' email address)
+    if (el.closest('[data-sync-continues]')) return false;
     if (el.isContentEditable || el.tagName === 'TEXTAREA') return true;
     return el instanceof HTMLInputElement && ['text', 'search', 'number', 'email', 'url', ''].includes(el.type);
   }
 
   private inDialog(): boolean {
-    return document.querySelector('.MuiDialog-root:not([data-sync-decisions])') !== null;
+    return document.querySelector(HOLDING_DIALOG) !== null;
   }
 
   /**

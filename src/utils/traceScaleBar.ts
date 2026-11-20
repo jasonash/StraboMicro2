@@ -11,22 +11,17 @@
  * exceeded", seen in Sentry 2026-10-05, v2.0.49).
  */
 
+import { MIN_OVERLAY_SCALE, MAX_OVERLAY_SCALE, childPixelsPerCm, overlayScaleOnDisplay } from './placementMath.ts';
+
 /**
- * Limits of the overlay's scale on the parent's displayed image. Wide: a
+ * Limits of the overlay's scale on the parent's displayed image (shared with
+ * the other scale methods, src/utils/placementMath.ts). Wide: a
  * high-magnification child on a low-magnification (or downsampled) parent is
  * legitimately well under 0.01 (they were 0.01 and 10, silently, until
  * 2026-10-05; a 10x child on a 2.5x parent in real data came to 0.009)
  */
-export const MIN_TRACE_SCALE = 0.0001;
-export const MAX_TRACE_SCALE = 1000;
-
-const TO_CM: Record<string, number> = {
-  'μm': 10000,
-  'mm': 10,
-  'cm': 1,
-  'm': 0.01,
-  'inches': 0.393701,
-};
+export const MIN_TRACE_SCALE = MIN_OVERLAY_SCALE;
+export const MAX_TRACE_SCALE = MAX_OVERLAY_SCALE;
 
 export interface TracedLine {
   x1: number;
@@ -55,14 +50,12 @@ export function scaleFromTracedBar(args: {
   parentOriginalWidth: number;
 }): { scale: number; clamped: boolean; raw: number } | null {
   const { pixels, physicalLength, unit, parentScale, parentDisplayedWidth, parentOriginalWidth } = args;
-  if (!(pixels > 0) || !(physicalLength > 0) || !(parentScale > 0) || !(parentDisplayedWidth > 0) || !(parentOriginalWidth > 0)) {
-    return null;
-  }
-  const childPixelsPerCm = (pixels / physicalLength) * (TO_CM[unit] ?? 1);
-  const parentScaleInDisplayedImage = parentScale * (parentDisplayedWidth / parentOriginalWidth);
-  const raw = parentScaleInDisplayedImage / childPixelsPerCm;
-  const scale = Math.min(MAX_TRACE_SCALE, Math.max(MIN_TRACE_SCALE, raw));
-  return { scale, clamped: scale !== raw, raw };
+  return overlayScaleOnDisplay({
+    childPxPerCm: childPixelsPerCm(pixels, physicalLength, unit),
+    parentScale,
+    parentDisplayedWidth,
+    parentOriginalWidth,
+  });
 }
 
 /** What to say when the traced bar gives a scale outside the limits (null when inside) */

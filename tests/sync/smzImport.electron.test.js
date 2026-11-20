@@ -209,6 +209,71 @@ app.whenReady().then(async () => {
       { 'uiImages/17671200000002': 'ui', 'images/17671200000003': 'orig' });
     const li = await smzImport.inspectSmz(smzL);
     check('inspect: a legacy file\'s uiImages count as images', li.success && li.missingImages === 0 && li.micrographCount === 2, JSON.stringify(li));
+
+    // A v1 file is saved in the app's own form at import, times kept: the
+    // server's copy of the same project then matches it (2.0.60: a v1 import
+    // of a synced project gave a conflict on every entity)
+    const { inAppFormat, rewriteInAppFormat } = require(`${E}/projectSerializer`);
+    const { deepEqual } = require(`${E}/deepEqual`);
+    const { explode } = require(`${E}/shared/entityModel.mjs`);
+    const V = '16918797370001';
+    const v1 = {
+      id: V, name: 'Olympics', date: '2023-08-12T22:35:37Z', modifiedTimestamp: '1744071412804', projectLocation: 'remote',
+      datasets: [{
+        id: '17388662920001', name: 'Billets', date: '2025-02-06T18:24:52.282Z', modifiedTimestamp: '1744058546155',
+        samples: [{
+          id: '17440528190001', existsOnServer: false, label: 'OL23-25', sampleID: 'OL23-25', name: 'OL23-25',
+          inplacenessOfSample: '', orientedSample: 'unknown', sampleNotes: '', isExpanded: true,
+          micrographs: [{
+            id: '17440738530001', name: 'OL23-25-c-1', imageType: 'Plane Polarized Light', width: 2500, height: 1383,
+            polish: false, polishDescription: '', notes: '', scalePixelsPerCentimeter: 430.693835542644,
+            orientationInfo: { orientationMethod: 'unoriented' }, isMicroVisible: true,
+            instrument: { instrumentType: 'Optical Microscopy', dataType: '', instrumentBrand: '' },
+            spots: [{
+              id: '17440747030001', name: 'RSCM_run0', labelColor: '0xffffffff', showLabel: false, color: '0xff00ffff',
+              date: '2025-04-08T01:11:18.170Z', time: '2025-04-08T01:11:18.170Z', notes: '', modifiedTimestamp: 1744074678172,
+              geometryType: 'point', points: [{ X: 1064.9965886761988, Y: 1154.0235283136174 }],
+            }],
+          }],
+        }],
+      }],
+    };
+    const normalized = inAppFormat(v1);
+    const rawEntities = explode(v1, []);
+    const differingRaw = rawEntities.order.filter((k) => !deepEqual(rawEntities.entities[k], explode(normalized, []).entities[k]));
+    check('v1 fixture: raw and app form differ in every entity but the dataset (what made the conflicts)',
+      differingRaw.length === 4 && !differingRaw.some((k) => k.startsWith('dataset:')), JSON.stringify(differingRaw));
+    const smzV = path.join(tmp, 'v1.smz');
+    await makeSmz(smzV, v1);
+    const vr = await smzImport.importSmz(smzV, () => {});
+    const vFile = path.join(projectFolders.getLocalProjectPath(V), 'project.json');
+    const onDisk = vr.success ? readJson(vFile) : null;
+    check('v1 import: project.json is in the app\'s own form', vr.success && deepEqual(onDisk, normalized),
+      JSON.stringify({ success: vr.success, error: vr.error, project: onDisk && Object.keys(onDisk) }));
+    check('v1 import: the project and dataset keep their modified times',
+      !!onDisk && onDisk.modifiedTimestamp === '1744071412804' && onDisk.datasets[0].modifiedTimestamp === '1744058546155',
+      JSON.stringify(onDisk && { p: onDisk.modifiedTimestamp, d: onDisk.datasets[0].modifiedTimestamp }));
+    check('v1 import: numbers rounded as a save rounds them',
+      !!onDisk && onDisk.datasets[0].samples[0].micrographs[0].spots[0].points[0].X === 1064.9965886762);
+    check('app form: rewriting again changes nothing', (await rewriteInAppFormat(vFile)) === false);
+
+    // A real v1 project.json (V1_PROJECT_JSON=/path/to/project.json): app form, times kept, stable
+    if (process.env.V1_PROJECT_JSON) {
+      const real = readJson(process.env.V1_PROJECT_JSON);
+      const realFile = path.join(tmp, 'real-project.json');
+      fs.writeFileSync(realFile, JSON.stringify(real));
+      const changed = await rewriteInAppFormat(realFile);
+      const after = readJson(realFile);
+      const before = explode(real, []);
+      const now = explode(after, []);
+      const again = explode(inAppFormat(after), []);
+      check('real v1: rewritten', changed === true);
+      check('real v1: same entities, the project and dataset times kept',
+        deepEqual(now.order, before.order) && after.modifiedTimestamp === real.modifiedTimestamp &&
+        after.datasets.every((d, i) => d.modifiedTimestamp === real.datasets[i].modifiedTimestamp));
+      check('real v1: in app form every entity is stable', now.order.every((k) => deepEqual(now.entities[k], again.entities[k])));
+      console.log(`  real v1: ${before.order.length} entities, ${before.order.filter((k) => !deepEqual(before.entities[k], now.entities[k])).length} in another form before`);
+    }
   } catch (e) {
     failures++;
     console.log('ERROR', e && e.stack);
