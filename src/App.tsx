@@ -63,6 +63,7 @@ import { SyncIntroNotice } from './components/SyncIntroNotice';
 import { useAppStore, undo, redo, setUndoBlockedHandler, setChangeGuard } from '@/store';
 import { currentPermissions } from '@/hooks/usePermissions';
 import { isRestricted, splitChanges, refusalMessage } from '@/utils/permissions';
+import { currentUndoTarget } from '@/utils/undoTarget';
 import { useAuthStore, promptLogin } from '@/store/useAuthStore';
 import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT, COLLABORATE_EVENT, LOGOUT_REQUEST_EVENT } from '@/services/syncActions';
 import { beginLinking, LINK_SYNC_EVENT, type LinkRequest } from '@/services/syncLinking';
@@ -1005,13 +1006,20 @@ function App() {
       const { refused } = splitChanges(p, changes);
       return refused.length > 0 ? refusalMessage(refused[0].problem) : null;
     });
+    // The menu takes Ctrl+Z before the page does, so the page chooses what it
+    // acts on: a text field's own text, nothing behind an open dialog, else the
+    // project (src/utils/undoTarget.ts)
     unsubscribers.push(window.api.onUndo(() => {
-      void undo();
+      const target = currentUndoTarget();
+      if (target === 'text') document.execCommand('undo');
+      else if (target === 'project') void undo();
     }));
 
     // Redo menu item
     unsubscribers.push(window.api.onRedo(() => {
-      void redo();
+      const target = currentUndoTarget();
+      if (target === 'text') document.execCommand('redo');
+      else if (target === 'project') void redo();
     }));
 
     // Theme menu item
