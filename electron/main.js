@@ -909,8 +909,12 @@ function createWindow() {
         {
           label: 'Undo',
           accelerator: 'CmdOrCtrl+Z',
-          click: () => {
-            if (mainWindow) {
+          // In another window (chat; on macOS the menu serves every window)
+          // the key is that window's text undo, never the project's
+          click: (_item, focusedWindow) => {
+            if (focusedWindow && focusedWindow !== mainWindow) {
+              focusedWindow.webContents.undo();
+            } else if (mainWindow) {
               mainWindow.webContents.send('menu:undo');
             }
           }
@@ -918,8 +922,10 @@ function createWindow() {
         {
           label: 'Redo',
           accelerator: 'CmdOrCtrl+Shift+Z',
-          click: () => {
-            if (mainWindow) {
+          click: (_item, focusedWindow) => {
+            if (focusedWindow && focusedWindow !== mainWindow) {
+              focusedWindow.webContents.redo();
+            } else if (mainWindow) {
               mainWindow.webContents.send('menu:redo');
             }
           }
