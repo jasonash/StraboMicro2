@@ -19,6 +19,12 @@ import { sectionHasData, type SpotDataSectionId } from '@/utils/spotDataSections
 /** Where a saved analysis lives: a micrograph's list or the project's */
 export type AnalysisHome = { kind: 'micrograph'; micrographId: string } | { kind: 'project' };
 
+/** One saved analysis: where it lives and its id (the right pane opens the dialog with it) */
+export interface SavedAnalysisRef {
+  home: AnalysisHome;
+  id: string;
+}
+
 export function homeForScope(scope: AnalysisScope, micrographId: string | null | undefined): AnalysisHome | null {
   if (scope === 'all') return { kind: 'project' };
   return micrographId ? { kind: 'micrograph', micrographId } : null;
