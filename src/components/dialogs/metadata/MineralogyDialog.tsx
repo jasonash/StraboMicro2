@@ -4,6 +4,11 @@
  * Two-tab dialog for editing mineralogy and lithology data.
  * Tab 1: Mineralogy - Add minerals with percentages, determination method
  * Tab 2: Lithology - Hierarchical lithology selection (Level 1-3)
+ *
+ * Each mineral in the list shows its color for View Spots by Mineral Color;
+ * a click changes the project's color for that mineral, saved with Save
+ * (Claire, 2026-11-23). Owners and Editors only: Contributors and Viewers
+ * cannot change project settings, so their swatches only show the color.
  */
 
 import { useState, useEffect } from 'react';
@@ -31,6 +36,10 @@ import { useAppStore } from '@/store';
 import { AutocompleteMineralSearch } from './reusable/AutocompleteMineralSearch';
 import { LithologyPicker, LithologySelection } from './reusable/LithologyPicker';
 import { OtherTextField } from './reusable/OtherTextField';
+import { ColorSwatch } from '../../MineralColorSwatch';
+import { useCanEdit } from '@/hooks/usePermissions';
+import { resolveMineralColor, withMineralColors } from '@/utils/mineralColor';
+import { mineralAmountText, mineralHasAmount } from '@/utils/mineralAmount';
 import type { MineralogyType, LithologyInfoType } from '@/types/project-types';
 
 interface MineralogyDialogProps {
@@ -46,6 +55,44 @@ interface MineralogyDialogProps {
     mineralogy: MineralogyType | null,
     lithology: LithologyInfoType | null
   ) => void;
+}
+
+/** Hover text of a mineral's swatch */
+function mineralSwatchTitle(source: string, changed: boolean, editable: boolean): string {
+  const now = changed
+    ? 'New color, saved to the project with Save.'
+    : source === 'project'
+      ? "This project's color."
+      : source === 'global'
+        ? 'Your Global color (Spot > Configure Mineral Colors...).'
+        : source === 'default'
+          ? 'The built-in color.'
+          : 'No color set (gray).';
+  return editable
+    ? `${now} Click to choose this mineral's color for the project.`
+    : `${now} Only the owner or an Editor can change the project's mineral colors.`;
+}
+
+function MineralRowSwatch({ mineral, color, source, changed, editable, onChange }: {
+  mineral: string;
+  color: string;
+  source: string;
+  changed: boolean;
+  editable: boolean;
+  onChange: (color: string) => void;
+}) {
+  return (
+    <Box sx={{ mr: 1.5, display: 'flex' }}>
+      <ColorSwatch
+        color={color}
+        size={24}
+        onChange={editable ? onChange : undefined}
+        label={`${mineral} color`}
+        title={mineralSwatchTitle(source, changed, editable)}
+        testId="mineral-color-swatch"
+      />
+    </Box>
+  );
 }
 
 interface TabPanelProps {
@@ -64,8 +111,19 @@ function TabPanel({ children, value, index }: TabPanelProps) {
 
 interface MineralWithPercentage {
   name: string;
-  operator: string; // "eq" (=), "gt" (>), "lt" (<)
-  percentage: number;
+  operator: string; // "eq" (=), "gt" (>), "lt" (<); '' with no amount
+  percentage: number | null; // null: no amount
+}
+
+/**
+ * A stored mineral as a list entry. No amount (null, or the 0 this dialog
+ * wrongly saved for a year: src/utils/mineralAmount.ts) loads as null, so a
+ * Save no longer turns "Quartz" into "Quartz = 0%" (Jason, 2026-11-23).
+ */
+function loadMineral(m: { name?: string | null; operator?: string | null; percentage?: number | null }): MineralWithPercentage {
+  return mineralHasAmount(m) && typeof m.percentage === 'number'
+    ? { name: m.name || '', operator: m.operator || 'eq', percentage: m.percentage }
+    : { name: m.name || '', operator: '', percentage: null };
 }
 
 interface MineralogyData {
@@ -105,6 +163,12 @@ export function MineralogyDialog({
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
   const updateSpotData = useAppStore((state) => state.updateSpotData);
+  const globalMineralColors = useAppStore((state) => state.globalMineralColors);
+  const setProjectMineralColors = useAppStore((state) => state.setProjectMineralColors);
+  // Mineral colors are a project setting (Owner or Editor)
+  const canSetColors = useCanEdit('project', project?.id) && project !== null;
+  // Colors chosen in this dialog (mineral name -> color), saved to the project with Save
+  const [pendingColors, setPendingColors] = useState<Record<string, string>>({});
 
   const [currentTab, setCurrentTab] = useState(0);
   const [formData, setFormData] = useState<MineralogyData>({
@@ -136,15 +200,12 @@ export function MineralogyDialog({
     setCurrentOperator('eq');
     setCurrentPercentage(null);
     setAskNotAdded(false);
+    setPendingColors({});
 
     // Preset mode: load from props instead of store
     if (presetMode) {
       setFormData({
-        minerals: initialMineralogy?.minerals?.map(m => ({
-          name: m.name || '',
-          operator: m.operator || 'eq',
-          percentage: m.percentage || 0,
-        })) || [],
+        minerals: initialMineralogy?.minerals?.map(loadMineral) || [],
         determinationMethod: initialMineralogy?.mineralogyMethod || '',
         percentageCalculationMethod: initialMineralogy?.percentageCalculationMethod || '',
         mineralogyNotes: initialMineralogy?.notes || '',
@@ -181,11 +242,7 @@ export function MineralogyDialog({
     }
 
     setFormData({
-      minerals: existingMineralogy?.minerals?.map((m: any) => ({
-        name: m.name || '',
-        operator: m.operator || 'eq',
-        percentage: m.percentage || 0,
-      })) || [],
+      minerals: existingMineralogy?.minerals?.map(loadMineral) || [],
       determinationMethod: existingMineralogy?.mineralogyMethod || '',
       percentageCalculationMethod: existingMineralogy?.percentageCalculationMethod || '',
       mineralogyNotes: existingMineralogy?.notes || '',
@@ -206,10 +263,10 @@ export function MineralogyDialog({
   // The chosen mineral as a list entry (null when none is chosen)
   const chosenMineral = (): MineralWithPercentage | null => {
     if (selectedMinerals.length === 0) return null;
-    // Only include percentage info if actually entered (0 is stored, the null state is tracked here)
-    return currentPercentage != null
+    // No percentage entered (or 0): no amount, stored as null like the legacy app
+    return currentPercentage != null && currentPercentage !== 0
       ? { name: selectedMinerals[0], operator: currentOperator, percentage: currentPercentage }
-      : { name: selectedMinerals[0], operator: '', percentage: 0 };
+      : { name: selectedMinerals[0], operator: '', percentage: null };
   };
 
   // Add selected mineral with percentage to list
@@ -259,17 +316,19 @@ export function MineralogyDialog({
 
   const saveData = (data: MineralogyData) => {
     setAskNotAdded(false);
+    // Mineral colors chosen here go to the project's colors (one undo step with the data)
+    if (canSetColors && Object.keys(pendingColors).length > 0) {
+      setProjectMineralColors(withMineralColors(project?.mineralColors, pendingColors));
+    }
     // Save to TWO separate fields: mineralogy and lithologyInfo
     // Legacy app uses one dialog to edit both fields (by design)
     console.log('Saving mineralogy and lithology data:', data);
 
     // Build mineralogy object (Tab 1)
     const mineralogy = {
-      minerals: data.minerals.map(m => ({
-        name: m.name,
-        operator: m.operator,
-        percentage: m.percentage,
-      })),
+      minerals: data.minerals.map(m => (m.percentage != null
+        ? { name: m.name, operator: m.operator || 'eq', percentage: m.percentage }
+        : { name: m.name, operator: null, percentage: null })),
       mineralogyMethod: data.determinationMethod || null,
       percentageCalculationMethod: data.percentageCalculationMethod || null,
       notes: data.mineralogyNotes || null,
@@ -446,7 +505,7 @@ export function MineralogyDialog({
                   </Typography>
                   <List sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
                     {formData.minerals.map((mineral, index) => {
-                      const operatorSymbol = mineral.operator === 'eq' ? '=' : mineral.operator === 'gt' ? '>' : '<';
+                      const resolved = resolveMineralColor(mineral.name, project?.mineralColors, globalMineralColors);
                       return (
                         <ListItem
                           key={index}
@@ -456,14 +515,27 @@ export function MineralogyDialog({
                             </IconButton>
                           }
                         >
+                          <MineralRowSwatch
+                            mineral={mineral.name}
+                            color={pendingColors[mineral.name] ?? resolved.color}
+                            changed={pendingColors[mineral.name] !== undefined}
+                            source={resolved.source}
+                            editable={canSetColors}
+                            onChange={(color) => setPendingColors((prev) => ({ ...prev, [mineral.name]: color }))}
+                          />
                           <ListItemText
                             primary={mineral.name}
-                            secondary={`${operatorSymbol} ${mineral.percentage}%`}
+                            secondary={mineralAmountText(mineral) || undefined}
                           />
                         </ListItem>
                       );
                     })}
                   </List>
+                  {(spotId || presetMode) && (
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.secondary' }}>
+                      In View Spots by Mineral Color, a spot takes the color of its first mineral.
+                    </Typography>
+                  )}
                 </Box>
               )}
 
