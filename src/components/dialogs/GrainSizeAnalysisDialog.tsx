@@ -7,7 +7,8 @@
  * - Orientation rose diagram
  * - Population statistics (mean, median, sorting, etc.)
  * - Grouping by mineral
- * - CSV and PDF export
+ * - CSV and PDF export (src/services/grainAnalysisPdf.ts)
+ * - Named, saved analyses on the micrograph or the project (Claire #64)
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -49,6 +50,7 @@ import {
   ContentCopy as CopyIcon,
   Check as CheckIcon,
   Save as SaveIcon,
+  PictureAsPdf as PdfIcon,
 } from '@mui/icons-material';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '@/store';
@@ -82,6 +84,7 @@ import {
 } from '@/utils/savedGrainAnalyses';
 import { SPOT_DATA_SECTIONS, type SpotDataSectionId } from '@/utils/spotDataSections';
 import { useReadOnlyReason } from '@/hooks/usePermissions';
+import { exportGrainAnalysisPdf } from '@/services/grainAnalysisPdf';
 
 // =============================================================================
 // Types
@@ -387,6 +390,39 @@ export function GrainSizeAnalysisDialog({ open, onClose, initialAnalysis = null 
       aspectRatios: analysisResults.grains.map(g => g.aspectRatio),
     };
   }, [analysisResults]);
+
+  // Which image's right side 0° points to (rose caption), and the note when unrelated frames are combined
+  const frameDescription = scope === 'all'
+    ? "each polygon's reference micrograph, measured as the polygon lies on the reference, including any rotation of the associated micrograph it was drawn on"
+    : 'the micrograph image';
+  const framesWarning = orientationFrames.length > 1
+    ? `Polygons from ${orientationFrames.length} reference micrographs are combined ` +
+      `(${orientationFrames.map((f) => `${f.name}: ${f.grains}`).join(', ')}). Each is measured from its own ` +
+      "reference micrograph's horizontal, and those are not related unless the sections were imaged the same way round."
+    : '';
+
+  // PDF export: the analysis as shown (charts, caption, statistics, By Mineral)
+  const handleExportPdf = useCallback(async () => {
+    if (!analysisResults) return;
+    setExporting(true);
+    try {
+      await exportGrainAnalysisPdf({
+        results: analysisResults,
+        name: loaded?.name ?? null,
+        projectName: project?.name || 'Untitled project',
+        scopeText: scope === 'all' ? 'All micrographs' : `Current micrograph: ${currentMicrograph?.name || 'Unnamed'}`,
+        rockType,
+        useLogScale,
+        frameDescription,
+        roseNote: framesWarning || undefined,
+        missingNote: missingSpotsText(missingInLoaded) || undefined,
+      });
+    } catch (error) {
+      console.error('Failed to export PDF:', error);
+    } finally {
+      setExporting(false);
+    }
+  }, [analysisResults, loaded, project, scope, currentMicrograph, rockType, useLogScale, frameDescription, framesWarning, missingInLoaded]);
 
   // ---- Saved analyses ----------------------------------------------------------------
 
@@ -908,10 +944,7 @@ export function GrainSizeAnalysisDialog({ open, onClose, initialAnalysis = null 
                   <Typography variant="subtitle2" sx={{ mb: 1 }}>Orientation</Typography>
                   {orientationFrames.length > 1 && (
                     <Alert severity="warning" sx={{ mb: 1.5, py: 0 }}>
-                      Polygons from {orientationFrames.length} reference micrographs are combined
-                      ({orientationFrames.map((f) => `${f.name}: ${f.grains}`).join(', ')}). Each is
-                      measured from its own reference micrograph&apos;s horizontal, and those are
-                      not related unless the sections were imaged the same way round.
+                      {framesWarning}
                     </Alert>
                   )}
                   <Box sx={{ display: 'flex', justifyContent: 'center' }}>
@@ -919,11 +952,7 @@ export function GrainSizeAnalysisDialog({ open, onClose, initialAnalysis = null 
                       orientations={chartData.orientations}
                       size={280}
                       showMean={true}
-                      frameDescription={
-                        scope === 'all'
-                          ? "each polygon's reference micrograph, measured as the polygon lies on the reference, including any rotation of the associated micrograph it was drawn on"
-                          : 'the micrograph image'
-                      }
+                      frameDescription={frameDescription}
                     />
                   </Box>
                 </Paper>
@@ -1063,6 +1092,13 @@ export function GrainSizeAnalysisDialog({ open, onClose, initialAnalysis = null 
           disabled={!analysisResults || exporting}
         >
           Export CSV
+        </Button>
+        <Button
+          startIcon={<PdfIcon />}
+          onClick={handleExportPdf}
+          disabled={!analysisResults || exporting}
+        >
+          Export PDF
         </Button>
         <Button
           startIcon={copied ? <CheckIcon /> : <CopyIcon />}

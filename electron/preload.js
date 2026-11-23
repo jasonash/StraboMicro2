@@ -348,6 +348,10 @@ contextBridge.exposeInMainWorld('api', {
   resetEverything: () => ipcRenderer.invoke('debug:reset-everything'),
   getMemoryInfo: () => ipcRenderer.invoke('debug:get-memory-info'),
 
+  // Grain Size Analysis PDF (Claire #64): one analysis, save dialog in main
+  exportGrainAnalysisPdf: (content, defaultName) =>
+    ipcRenderer.invoke('grain-analysis:export-pdf', content, defaultName),
+
   // PDF export
   exportDetailedNotesToPDF: (projectData, micrographId, spotId) =>
     ipcRenderer.invoke('pdf:export-detailed-notes', projectData, micrographId, spotId),

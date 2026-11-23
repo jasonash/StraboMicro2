@@ -844,6 +844,13 @@ interface Window {
       timestamp: number;
     }>;
 
+    // Grain Size Analysis PDF (one analysis; shows a save dialog), electron/grainAnalysisPdf.js
+    exportGrainAnalysisPdf: (content: import('./services/grainAnalysisPdf').GrainAnalysisPdfContent, defaultName: string) => Promise<{
+      success: boolean;
+      canceled?: boolean;
+      filePath?: string;
+    }>;
+
     // PDF export
     exportDetailedNotesToPDF: (projectData: any, micrographId?: string, spotId?: string) => Promise<{
       success: boolean;
