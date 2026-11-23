@@ -98,6 +98,7 @@ import {
   SketchLayer,
   SketchStroke,
   SketchText,
+  SavedGrainAnalysis,
 } from '@/types/project-types';
 import * as turf from '@turf/turf';
 import polygonClipping from 'polygon-clipping';
@@ -142,6 +143,7 @@ import { applySiblingLink, repairSiblingPlacements } from '@/utils/siblingPlacem
 import { affineRealScale, repairAffineScales, setScaleWithCascade } from '@/utils/affineScale';
 import { repairSpotGeometryTypes } from '@/utils/spotGeometryType';
 import { NO_SPOT_FILTER, type SpotFilter } from '@/utils/spotDataSections';
+import type { AnalysisHome } from '@/utils/savedGrainAnalyses';
 
 /**
  * Repairs for projects saved by earlier versions, when a project is opened or the session
@@ -532,6 +534,10 @@ interface AppState {
   setGrainAnalysisSpotFilter: (filter: 'all' | 'selected') => void;
   /** Set grain analysis selected spot IDs */
   setGrainAnalysisSelectedSpotIds: (ids: string[]) => void;
+  /** Add a saved Grain Size analysis, or replace the one with its id (Claire #64; undoable) */
+  saveGrainAnalysis: (home: AnalysisHome, analysis: SavedGrainAnalysis) => void;
+  /** Remove a saved Grain Size analysis (undoable) */
+  deleteGrainAnalysis: (home: AnalysisHome, id: string) => void;
 
   // ========== MINERAL COLOR ACTIONS ==========
   /** Set the spot color mode */
@@ -2934,6 +2940,29 @@ export const useAppStore = create<AppState>()(
             if (project) project.grainAnalysisSelectedSpotIds = ids;
             set({ grainAnalysisSelectedSpotIds: ids, isDirty: true });
           },
+
+          saveGrainAnalysis: (home, analysis) => set((state) => {
+            if (!state.project) return state;
+            const upsert = (list: SavedGrainAnalysis[] | null | undefined): SavedGrainAnalysis[] => {
+              const current = list ?? [];
+              return current.some((a) => a.id === analysis.id)
+                ? current.map((a) => (a.id === analysis.id ? analysis : a))
+                : [...current, analysis];
+            };
+            const newProject = home.kind === 'project'
+              ? { ...state.project, grainAnalyses: upsert(state.project.grainAnalyses) }
+              : updateMicrograph(state.project, home.micrographId, (m) => { m.grainAnalyses = upsert(m.grainAnalyses); });
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
+          }),
+
+          deleteGrainAnalysis: (home, id) => set((state) => {
+            if (!state.project) return state;
+            const without = (list: SavedGrainAnalysis[] | null | undefined) => (list ?? []).filter((a) => a.id !== id);
+            const newProject = home.kind === 'project'
+              ? { ...state.project, grainAnalyses: without(state.project.grainAnalyses) }
+              : updateMicrograph(state.project, home.micrographId, (m) => { m.grainAnalyses = without(m.grainAnalyses); });
+            return { project: newProject, isDirty: true, ...projectIndexes(newProject) };
+          }),
 
           // ========== MINERAL COLOR ACTIONS ==========
 

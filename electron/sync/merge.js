@@ -14,7 +14,8 @@
  *   - Other lists are one value (items have no ids), except:
  *     id sets (spot.tags, micrograph.tags, group.micrographs, group.spotIDs,
  *     tag.spotIDs, project.customUserDataColumns) merge as sets, and id-keyed lists (micrograph
- *     sketchLayers and each layer's strokes and textItems) merge per item.
+ *     sketchLayers and each layer's strokes and textItems, micrograph and project
+ *     grainAnalyses) merge per item.
  *   - modifiedTimestamp: the later value wins, never a conflict.
  *   - null and a missing key are the same (the push protocol's rule).
  *   - Changed on both sides to different values = conflict; the merged
@@ -73,6 +74,8 @@ function isIdSet(type, path) {
 }
 
 function isIdKeyed(type, path) {
+  // Saved Grain Size analyses (Claire #64): two people saving at once both keep theirs
+  if ((type === 'micrograph' || type === 'project') && path.length === 1 && path[0] === 'grainAnalyses') return true;
   if (type !== 'micrograph' || path[0] !== 'sketchLayers') return false;
   if (path.length === 1) return true;
   return path.length === 3 && isItemSegment(path[1]) && (path[2] === 'strokes' || path[2] === 'textItems');

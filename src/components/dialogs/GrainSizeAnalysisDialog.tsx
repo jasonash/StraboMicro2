@@ -7,7 +7,8 @@
  * - Orientation rose diagram
  * - Population statistics (mean, median, sorting, etc.)
  * - Grouping by mineral
- * - CSV and PDF export
+ * - CSV and PDF export (src/services/grainAnalysisPdf.ts)
+ * - Named, saved analyses on the micrograph or the project (Claire #64)
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -35,23 +36,58 @@ import {
   Chip,
   CircularProgress,
   Alert,
+  Select,
+  MenuItem,
+  TextField,
+  Tooltip,
+  InputLabel,
+  ListItemIcon,
+  Menu,
+  type SelectChangeEvent,
 } from '@mui/material';
 import {
   Close as CloseIcon,
   Download as DownloadIcon,
   ContentCopy as CopyIcon,
   Check as CheckIcon,
+  Save as SaveIcon,
+  PictureAsPdf as PdfIcon,
+  FileDownloadOutlined as ChartDownloadIcon,
 } from '@mui/icons-material';
+import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '@/store';
-import { grainMetricsInFrames } from '@/utils/grainFrames';
-import {
-  analyzeGrains,
-  type RockType,
-  type GrainAnalysisResults,
-} from '@/services/grainAnalysis';
+import { type RockType } from '@/services/grainAnalysis';
 import { SizeHistogram, RoseDiagram } from '@/components/charts';
-import type { MicrographMetadata, Spot } from '@/types/project-types';
-import { isPolygonType } from '@/utils/spotGeometryType';
+import type { SavedGrainAnalysis } from '@/types/project-types';
+import {
+  micrographsInScope,
+  polygonSpotsOf,
+  runGrainAnalysis,
+  orientationSpreadDegrees,
+  type AnalysisScope,
+} from '@/utils/grainAnalysisRun';
+import {
+  homeForScope,
+  scopeOfHome,
+  analysisNameProblem,
+  cleanAnalysisName,
+  nextAnalysisName,
+  orderedSpotIds,
+  resolveAnalysisSpots,
+  missingSpotsText,
+  analysisUnchanged,
+  mineralChoices,
+  tagChoices,
+  spotMatchesListFilter,
+  isSpotListFilterOn,
+  NO_SPOT_LIST_FILTER,
+  type SavedAnalysisRef,
+  type SpotListFilter,
+} from '@/utils/savedGrainAnalyses';
+import { SPOT_DATA_SECTIONS, type SpotDataSectionId } from '@/utils/spotDataSections';
+import { useReadOnlyReason } from '@/hooks/usePermissions';
+import { exportGrainAnalysisPdf } from '@/services/grainAnalysisPdf';
+import { downloadChart, type ChartFormat } from '@/services/grainCharts';
 
 // =============================================================================
 // Types
@@ -60,9 +96,17 @@ import { isPolygonType } from '@/utils/spotGeometryType';
 interface GrainSizeAnalysisDialogProps {
   open: boolean;
   onClose: () => void;
+  /** Open with this saved analysis loaded (from the right pane) */
+  initialAnalysis?: SavedAnalysisRef | null;
 }
 
-type AnalysisScope = 'current' | 'all';
+/** The name prompt of Save As... and Rename... */
+interface NamePrompt {
+  mode: 'saveAs' | 'rename';
+  value: string;
+}
+
+const SMALL_BUTTON = { minWidth: 0, fontSize: '0.7rem', px: 1, py: 0 } as const;
 
 // =============================================================================
 // Helper Functions
@@ -138,17 +182,100 @@ function getMineralColor(mineral: string): string {
   return colors[mineral] || '#4CAF50';
 }
 
+/**
+ * A small multi-choice dropdown for the spot-list filters. Nothing chosen = any.
+ * Disabled when there is nothing to choose from.
+ */
+function FilterSelect({
+  label,
+  options,
+  value,
+  onChange,
+  testId,
+}: {
+  label: string;
+  options: Array<{ value: string; label: string }>;
+  value: string[];
+  onChange: (value: string[]) => void;
+  testId: string;
+}) {
+  const labelOf = (v: string) => options.find((o) => o.value === v)?.label ?? v;
+  return (
+    <FormControl size="small" sx={{ minWidth: 120, maxWidth: 220 }} disabled={options.length === 0}>
+      <Select
+        multiple
+        displayEmpty
+        value={value}
+        data-testid={testId}
+        onChange={(e) => {
+          const v = e.target.value;
+          onChange(typeof v === 'string' ? v.split(',') : v);
+        }}
+        renderValue={(selected) =>
+          selected.length === 0 ? `${label}: any` : `${label}: ${selected.map(labelOf).join(', ')}`
+        }
+        sx={{ fontSize: '0.75rem', '& .MuiSelect-select': { py: 0.5 } }}
+      >
+        {options.map((o) => (
+          <MenuItem key={o.value} value={o.value} dense>
+            <ListItemIcon sx={{ minWidth: 28 }}>
+              <Checkbox size="small" checked={value.includes(o.value)} sx={{ p: 0 }} />
+            </ListItemIcon>
+            <ListItemText primary={o.label} />
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+  );
+}
+
+/** A chart's download button: PNG or SVG, in print colors on white */
+function ChartDownloadButton({
+  label,
+  onDownload,
+  testId,
+}: {
+  label: string;
+  onDownload: (format: ChartFormat) => void;
+  testId: string;
+}) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const pick = (format: ChartFormat) => {
+    setAnchor(null);
+    onDownload(format);
+  };
+  return (
+    <>
+      <Tooltip title={`Download ${label}`}>
+        <IconButton size="small" aria-label={`Download ${label}`} data-testid={testId} onClick={(e) => setAnchor(e.currentTarget)}>
+          <ChartDownloadIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
+        <MenuItem dense onClick={() => pick('png')}>
+          <ListItemText primary="PNG image" secondary="Raster, high resolution" />
+        </MenuItem>
+        <MenuItem dense onClick={() => pick('svg')}>
+          <ListItemText primary="SVG image" secondary="Vector, editable in Illustrator or Inkscape" />
+        </MenuItem>
+      </Menu>
+    </>
+  );
+}
+
 // =============================================================================
 // Component
 // =============================================================================
 
-export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDialogProps) {
+export function GrainSizeAnalysisDialog({ open, onClose, initialAnalysis = null }: GrainSizeAnalysisDialogProps) {
   // Store state
   const project = useAppStore((s) => s.project);
   const activeMicrographId = useAppStore((s) => s.activeMicrographId);
   const micrographIndex = useAppStore((s) => s.micrographIndex);
+  const saveGrainAnalysis = useAppStore((s) => s.saveGrainAnalysis);
+  const deleteGrainAnalysis = useAppStore((s) => s.deleteGrainAnalysis);
 
-  // Persisted grain analysis selection from store
+  // Persisted grain analysis selection from store (each person's own working selection)
   const storeSpotFilter = useAppStore((s) => s.grainAnalysisSpotFilter);
   const setGrainAnalysisSpotFilter = useAppStore((s) => s.setGrainAnalysisSpotFilter);
   const setGrainAnalysisSelectedSpotIds = useAppStore((s) => s.setGrainAnalysisSelectedSpotIds);
@@ -162,6 +289,11 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
   const [showGrid, setShowGrid] = useState(true);
   const [copied, setCopied] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Saved analyses (Claire #64): the one loaded (null = a new, unsaved analysis)
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const [namePrompt, setNamePrompt] = useState<NamePrompt | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [listFilter, setListFilter] = useState<SpotListFilter>(NO_SPOT_LIST_FILTER);
 
   // Get current micrograph
   const currentMicrograph = useMemo(() => {
@@ -169,49 +301,62 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
     return micrographIndex.get(activeMicrographId) || null;
   }, [activeMicrographId, micrographIndex]);
 
+  // Where analyses of this scope are saved, and the ones saved there
+  const home = useMemo(() => homeForScope(scope, currentMicrograph?.id), [scope, currentMicrograph]);
+  const savedList = useMemo((): SavedGrainAnalysis[] => {
+    if (!home) return [];
+    return (home.kind === 'project' ? project?.grainAnalyses : currentMicrograph?.grainAnalyses) ?? [];
+  }, [home, project, currentMicrograph]);
+  const loaded = useMemo(() => savedList.find((a) => a.id === loadedId) ?? null, [savedList, loadedId]);
+  const readOnlyReason = useReadOnlyReason(
+    home ? (home.kind === 'project' ? 'project' : 'micrograph') : null,
+    home ? (home.kind === 'project' ? project?.id : home.micrographId) : null
+  );
+
   // Collect all micrographs based on scope
-  const micrographsToAnalyze = useMemo(() => {
-    if (!project) return [];
-
-    if (scope === 'current') {
-      return currentMicrograph ? [currentMicrograph] : [];
-    }
-
-    // All micrographs
-    const all: MicrographMetadata[] = [];
-    for (const dataset of project.datasets || []) {
-      for (const sample of dataset.samples || []) {
-        for (const micrograph of sample.micrographs || []) {
-          all.push(micrograph);
-        }
-      }
-    }
-    return all;
-  }, [project, scope, currentMicrograph]);
+  const micrographsToAnalyze = useMemo(
+    () => micrographsInScope(project, scope, currentMicrograph),
+    [project, scope, currentMicrograph]
+  );
 
   // Collect all polygon spots (always polygon-only)
-  const allPolygonSpots = useMemo(() => {
-    const result: Array<{ spot: Spot; micrograph: MicrographMetadata }> = [];
+  const allPolygonSpots = useMemo(() => polygonSpotsOf(micrographsToAnalyze), [micrographsToAnalyze]);
 
-    for (const micrograph of micrographsToAnalyze) {
-      for (const spot of micrograph.spots || []) {
-        if (!isPolygonType(spot.geometryType)) continue;
-        if (spot.archived) continue;
-        result.push({ spot, micrograph });
-      }
+  // Each time the dialog opens: a new analysis, or the one the right pane asked for
+  useEffect(() => {
+    if (!open) return;
+    setListFilter(NO_SPOT_LIST_FILTER);
+    setNamePrompt(null);
+    setConfirmDelete(false);
+    if (initialAnalysis) {
+      setScope(scopeOfHome(initialAnalysis.home));
+      setLoadedId(initialAnalysis.id);
+    } else {
+      setLoadedId(null);
+      setSpotFilter(useAppStore.getState().grainAnalysisSpotFilter);
     }
+  }, [open, initialAnalysis]);
 
-    return result;
-  }, [micrographsToAnalyze]);
+  // A loaded analysis brings its rock type
+  useEffect(() => {
+    if (loaded) setRockType(loaded.rockType);
+    // Only when another analysis is loaded, not when it is saved again
+  }, [loaded?.id]);
 
-  // Initialize selectedSpotIds when the dialog opens or the available spots change.
-  // If we have a persisted selection, intersect with available spots; otherwise select all.
+  // Initialize selectedSpotIds when the dialog opens, the available spots change, or an
+  // analysis is loaded. A loaded analysis checks its saved spots. Otherwise the persisted
+  // working selection is intersected with the available spots (none saved = all).
   // The persisted list is read from the store here instead of being a dependency: the
   // dialog writes it on every checkbox change, and an empty list means "nothing saved"
   // (= all), so reacting to our own writes turned Select None (or unchecking the last
   // spot) back into Select All.
+  const loadedKey = loaded ? `${loaded.id}:${loaded.spotIds.join(',')}` : '';
   useEffect(() => {
     if (!open) return;
+    if (loaded) {
+      setSelectedSpotIds(new Set(resolveAnalysisSpots(loaded, allPolygonSpots).items.map(({ spot }) => spot.id)));
+      return;
+    }
     const allIds = new Set(allPolygonSpots.map(({ spot }) => spot.id));
     const persistedIds = useAppStore.getState().grainAnalysisSelectedSpotIds;
     if (persistedIds.length > 0) {
@@ -221,66 +366,54 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
     } else {
       setSelectedSpotIds(allIds);
     }
-  }, [open, allPolygonSpots]);
+  }, [open, allPolygonSpots, loadedKey]);
+
+  // A loaded analysis always uses its checked spots
+  const effectiveSpotFilter = loaded ? 'selected' : spotFilter;
+
+  /** Change the checked spots; only the unsaved working selection is remembered per person */
+  const changeSelection = useCallback((next: Set<string>) => {
+    setSelectedSpotIds(next);
+    if (!loadedId) setGrainAnalysisSelectedSpotIds(Array.from(next));
+  }, [loadedId, setGrainAnalysisSelectedSpotIds]);
 
   // Apply spot filter
   const spots = useMemo(() => {
-    if (spotFilter === 'all') return allPolygonSpots;
+    if (effectiveSpotFilter === 'all') return allPolygonSpots;
     return allPolygonSpots.filter(({ spot }) => selectedSpotIds.has(spot.id));
-  }, [allPolygonSpots, spotFilter, selectedSpotIds]);
+  }, [allPolygonSpots, effectiveSpotFilter, selectedSpotIds]);
 
-  // Calculate grain metrics. With All micrographs, orientations are turned into each grain's
-  // reference micrograph frame (src/utils/grainFrames.ts), so associated micrographs placed
-  // rotated on their parent are comparable; Current micrograph keeps that image's own frame.
-  const { metrics: grainMetrics, frames: orientationFrames } = useMemo(
-    () => grainMetricsInFrames(spots, (id) => micrographIndex.get(id), scope === 'all'),
-    [spots, micrographIndex, scope]
+  // The spot list as shown (the filters only narrow what is shown for checking)
+  const shownSpots = useMemo(
+    () => allPolygonSpots.filter(({ spot }) => spotMatchesListFilter(project, spot, listFilter)),
+    [allPolygonSpots, project, listFilter]
+  );
+  const filterOn = isSpotListFilterOn(listFilter);
+  const minerals = useMemo(() => mineralChoices(allPolygonSpots), [allPolygonSpots]);
+  const tags = useMemo(() => tagChoices(project, allPolygonSpots), [project, allPolygonSpots]);
+  const sectionsWithData = useMemo(
+    () => SPOT_DATA_SECTIONS.filter((section) => allPolygonSpots.some(({ spot }) => section.has(spot))),
+    [allPolygonSpots]
   );
 
-  // Perform full analysis
-  const analysisResults = useMemo((): GrainAnalysisResults | null => {
-    if (grainMetrics.length === 0) return null;
+  // The spots a save would keep, in list order
+  const spotIdsToSave = useMemo(
+    () => (effectiveSpotFilter === 'all'
+      ? allPolygonSpots.map(({ spot }) => spot.id)
+      : orderedSpotIds(allPolygonSpots, selectedSpotIds)),
+    [effectiveSpotFilter, allPolygonSpots, selectedSpotIds]
+  );
+  const missingInLoaded = loaded ? resolveAnalysisSpots(loaded, allPolygonSpots).missing : 0;
+  const loadedChanged = loaded !== null && !analysisUnchanged(loaded, spotIdsToSave, rockType);
 
-    // Use scale from first micrograph (for size conversions)
-    const firstMicrograph = micrographsToAnalyze[0];
-    if (!firstMicrograph) return null;
-
-    const scale = firstMicrograph.scalePixelsPerCentimeter || 100;
-
-    // Calculate total micrograph area - sum all micrographs when scope is "all"
-    let totalMicrographAreaMicrons2 = 0;
-    for (const micrograph of micrographsToAnalyze) {
-      const microScale = micrograph.scalePixelsPerCentimeter || 100;
-      const microµmPerPixel = 10000 / microScale;
-      totalMicrographAreaMicrons2 +=
-        (micrograph.width || 1000) *
-        (micrograph.height || 1000) *
-        microµmPerPixel * microµmPerPixel;
-    }
-
-    // Get sample name
-    let sampleName = '';
-    if (project) {
-      for (const dataset of project.datasets || []) {
-        for (const sample of dataset.samples || []) {
-          if (sample.micrographs?.some(m => m.id === firstMicrograph.id)) {
-            sampleName = sample.label || sample.sampleID || '';
-            break;
-          }
-        }
-      }
-    }
-
-    return analyzeGrains(
-      grainMetrics,
-      firstMicrograph.id,
-      firstMicrograph.name || 'Unknown',
-      sampleName,
-      scale,
-      totalMicrographAreaMicrons2,
-      rockType
-    );
-  }, [grainMetrics, micrographsToAnalyze, rockType, project]);
+  // Calculate grain metrics and the analysis (src/utils/grainAnalysisRun.ts, shared with the
+  // right pane and the PDF). With All micrographs, orientations are turned into each grain's
+  // reference micrograph frame, so associated micrographs placed rotated on their parent are
+  // comparable; Current micrograph keeps that image's own frame.
+  const { results: analysisResults, frames: orientationFrames, measured } = useMemo(
+    () => runGrainAnalysis(project, micrographsToAnalyze, spots, (id) => micrographIndex.get(id), scope, rockType),
+    [project, micrographsToAnalyze, spots, micrographIndex, scope, rockType]
+  );
 
   // Extract data for charts
   const chartData = useMemo(() => {
@@ -294,6 +427,113 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
       aspectRatios: analysisResults.grains.map(g => g.aspectRatio),
     };
   }, [analysisResults]);
+
+  // Which image's right side 0° points to (rose caption), and the note when unrelated frames are combined
+  const frameDescription = scope === 'all'
+    ? "each polygon's reference micrograph, measured as the polygon lies on the reference, including any rotation of the associated micrograph it was drawn on"
+    : 'the micrograph image';
+  const framesWarning = orientationFrames.length > 1
+    ? `Polygons from ${orientationFrames.length} reference micrographs are combined ` +
+      `(${orientationFrames.map((f) => `${f.name}: ${f.grains}`).join(', ')}). Each is measured from its own ` +
+      "reference micrograph's horizontal, and those are not related unless the sections were imaged the same way round."
+    : '';
+
+  // PDF export: the analysis as shown (charts, caption, statistics, By Mineral)
+  const handleExportPdf = useCallback(async () => {
+    if (!analysisResults) return;
+    setExporting(true);
+    try {
+      await exportGrainAnalysisPdf({
+        results: analysisResults,
+        name: loaded?.name ?? null,
+        projectName: project?.name || 'Untitled project',
+        scopeText: scope === 'all' ? 'All micrographs' : `Current micrograph: ${currentMicrograph?.name || 'Unnamed'}`,
+        rockType,
+        useLogScale,
+        showGrid,
+        frameDescription,
+        roseNote: framesWarning || undefined,
+        missingNote: missingSpotsText(missingInLoaded) || undefined,
+      });
+    } catch (error) {
+      console.error('Failed to export PDF:', error);
+    } finally {
+      setExporting(false);
+    }
+  }, [analysisResults, loaded, project, scope, currentMicrograph, rockType, useLogScale, showGrid, frameDescription, framesWarning, missingInLoaded]);
+
+  // One chart as a PNG or SVG file (print colors on white, as the PDF)
+  const handleDownloadChart = useCallback(async (kind: 'histogram' | 'rose', format: ChartFormat) => {
+    const base = loaded?.name ?? 'Grain Size';
+    try {
+      await downloadChart(
+        kind,
+        format,
+        { sizes: chartData.sizes, rockType, useLogScale, showGrid },
+        { orientations: chartData.orientations },
+        `${base} - ${kind === 'histogram' ? 'size distribution' : 'orientation'}`
+      );
+    } catch (error) {
+      console.error('Failed to save chart:', error);
+    }
+  }, [loaded, chartData, rockType, useLogScale, showGrid]);
+
+  // ---- Saved analyses ----------------------------------------------------------------
+
+  const handlePickAnalysis = (e: SelectChangeEvent<string>) => {
+    const id = e.target.value;
+    if (id === '') {
+      // Back to the working selection
+      setLoadedId(null);
+      setSpotFilter(useAppStore.getState().grainAnalysisSpotFilter);
+      return;
+    }
+    setLoadedId(id);
+  };
+
+  const handleScopeChange = (next: AnalysisScope) => {
+    setScope(next);
+    // Saved analyses belong to one scope
+    setLoadedId(null);
+    setSpotFilter(useAppStore.getState().grainAnalysisSpotFilter);
+  };
+
+  const handleSave = () => {
+    if (!loaded || !home) return;
+    saveGrainAnalysis(home, { ...loaded, spotIds: spotIdsToSave, rockType });
+  };
+
+  const handleNameConfirm = () => {
+    if (!namePrompt || !home) return;
+    const name = cleanAnalysisName(namePrompt.value);
+    if (analysisNameProblem(name, savedList, namePrompt.mode === 'rename' ? loaded?.id : undefined)) return;
+    if (namePrompt.mode === 'rename' && loaded) {
+      saveGrainAnalysis(home, { ...loaded, name });
+    } else {
+      const analysis: SavedGrainAnalysis = {
+        id: uuidv4(),
+        name,
+        spotIds: spotIdsToSave,
+        rockType,
+        date: new Date().toISOString(),
+      };
+      saveGrainAnalysis(home, analysis);
+      setLoadedId(analysis.id);
+    }
+    setNamePrompt(null);
+  };
+
+  const handleDelete = () => {
+    if (!loaded || !home) return;
+    deleteGrainAnalysis(home, loaded.id);
+    setConfirmDelete(false);
+    setLoadedId(null);
+    setSpotFilter(useAppStore.getState().grainAnalysisSpotFilter);
+  };
+
+  const nameProblem = namePrompt
+    ? analysisNameProblem(namePrompt.value, savedList, namePrompt.mode === 'rename' ? loaded?.id : undefined)
+    : null;
 
   // CSV Export handler
   const handleExportCSV = useCallback(async () => {
@@ -376,7 +616,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
       `  Mean Aspect Ratio: ${analysisResults.aspectRatioStats.mean.toFixed(2)}`,
       `  Mean Circularity: ${analysisResults.circularityStats.mean.toFixed(2)}`,
       analysisResults.preferredOrientation !== null
-        ? `  Preferred Orientation: ${analysisResults.preferredOrientation.toFixed(0)}° ± ${(Math.sqrt(-2 * Math.log(analysisResults.orientationStrength)) * 180 / Math.PI / 2).toFixed(0)}°`
+        ? `  Preferred Orientation: ${analysisResults.preferredOrientation.toFixed(0)}° ± ${orientationSpreadDegrees(analysisResults).toFixed(0)}°`
         : '',
     ].filter(line => line !== '').join('\n');
 
@@ -406,7 +646,9 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
     >
       <DialogTitle sx={{ pb: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="h6">Grain Size Analysis</Typography>
+          <Typography variant="h6" noWrap>
+            Grain Size Analysis{loaded ? `: ${loaded.name}` : ''}
+          </Typography>
           <IconButton onClick={onClose} size="small">
             <CloseIcon />
           </IconButton>
@@ -414,6 +656,96 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
       </DialogTitle>
 
       <DialogContent dividers sx={{ p: 2 }}>
+        {/* Saved analyses (Claire #64) */}
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1, mb: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 260 }} disabled={!home}>
+            {/* The empty value (new analysis) still shows text, so the label stays up in the border */}
+            <InputLabel id="grain-analysis-pick-label" shrink>Analysis</InputLabel>
+            <Select
+              labelId="grain-analysis-pick-label"
+              label="Analysis"
+              notched
+              value={loaded ? loaded.id : ''}
+              onChange={handlePickAnalysis}
+              displayEmpty
+              data-testid="grain-analysis-pick"
+              renderValue={(v) => (v === '' ? 'New analysis (not saved)' : savedList.find((a) => a.id === v)?.name ?? '')}
+            >
+              <MenuItem value="">
+                <em>New analysis (not saved)</em>
+              </MenuItem>
+              {savedList.map((a) => (
+                <MenuItem key={a.id} value={a.id}>
+                  {a.name}
+                  <Typography component="span" variant="caption" sx={{ color: 'text.secondary', ml: 1 }}>
+                    {a.spotIds.length} {a.spotIds.length === 1 ? 'spot' : 'spots'}
+                  </Typography>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Tooltip title={readOnlyReason ?? ''}>
+            <span>
+              <Button
+                size="small"
+                variant={loadedChanged ? 'contained' : 'text'}
+                startIcon={<SaveIcon />}
+                disabled={!loaded || !loadedChanged || readOnlyReason !== null}
+                onClick={handleSave}
+              >
+                Save
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title={readOnlyReason ?? ''}>
+            <span>
+              <Button
+                size="small"
+                disabled={!home || spotIdsToSave.length === 0 || readOnlyReason !== null}
+                onClick={() => setNamePrompt({ mode: 'saveAs', value: nextAnalysisName(savedList) })}
+              >
+                Save As...
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title={readOnlyReason ?? ''}>
+            <span>
+              <Button
+                size="small"
+                disabled={!loaded || readOnlyReason !== null}
+                onClick={() => loaded && setNamePrompt({ mode: 'rename', value: loaded.name })}
+              >
+                Rename...
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title={readOnlyReason ?? ''}>
+            <span>
+              <Button
+                size="small"
+                color="error"
+                disabled={!loaded || readOnlyReason !== null}
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete...
+              </Button>
+            </span>
+          </Tooltip>
+          <Typography variant="caption" sx={{ color: 'text.secondary', flex: '1 1 200px' }}>
+            {loadedChanged
+              ? 'Changed since it was saved.'
+              : scope === 'all'
+                ? 'All-micrograph analyses are saved with the project.'
+                : 'Saved with this micrograph.'}
+          </Typography>
+        </Stack>
+
+        {missingInLoaded > 0 && (
+          <Alert severity="info" sx={{ mb: 2, py: 0 }}>
+            {missingSpotsText(missingInLoaded)}
+          </Alert>
+        )}
+
         {/* Controls Row */}
         <Stack
           direction="row"
@@ -442,7 +774,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
             <RadioGroup
               row
               value={scope}
-              onChange={(e) => setScope(e.target.value as AnalysisScope)}
+              onChange={(e) => handleScopeChange(e.target.value as AnalysisScope)}
             >
               <FormControlLabel
                 value="current"
@@ -454,64 +786,102 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
             </RadioGroup>
           </FormControl>
 
-          {/* Spot Filter */}
-          <FormControl component="fieldset" size="small">
-            <FormLabel component="legend" sx={{ fontSize: '0.75rem' }}>Spots</FormLabel>
-            <RadioGroup
-              row
-              value={spotFilter}
-              onChange={(e) => {
-                const val = e.target.value as 'all' | 'selected';
-                setSpotFilter(val);
-                setGrainAnalysisSpotFilter(val);
-              }}
-            >
-              <FormControlLabel value="all" control={<Radio size="small" />} label="All spots" />
-              <FormControlLabel value="selected" control={<Radio size="small" />} label="Selected spots" />
-            </RadioGroup>
-          </FormControl>
+          {/* Spot Filter (a saved analysis always uses its checked spots) */}
+          {!loaded && (
+            <FormControl component="fieldset" size="small">
+              <FormLabel component="legend" sx={{ fontSize: '0.75rem' }}>Spots</FormLabel>
+              <RadioGroup
+                row
+                value={spotFilter}
+                onChange={(e) => {
+                  const val = e.target.value as 'all' | 'selected';
+                  setSpotFilter(val);
+                  setGrainAnalysisSpotFilter(val);
+                }}
+              >
+                <FormControlLabel value="all" control={<Radio size="small" />} label="All spots" />
+                <FormControlLabel value="selected" control={<Radio size="small" />} label="Selected spots" />
+              </RadioGroup>
+            </FormControl>
+          )}
         </Stack>
 
         <Divider sx={{ mb: 2 }} />
 
         {/* Spot Selection List */}
-        {spotFilter === 'selected' && allPolygonSpots.length > 0 && (
+        {effectiveSpotFilter === 'selected' && allPolygonSpots.length > 0 && (
           <Paper
             variant="outlined"
-            sx={{ mb: 2, maxHeight: 160, display: 'flex', flexDirection: 'column' }}
+            sx={{ mb: 2, maxHeight: 260, display: 'flex', flexDirection: 'column' }}
           >
+            {/* Filters: they only narrow the list shown for checking */}
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1, px: 1.5, pt: 1, pb: 0.5 }}
+            >
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Show:</Typography>
+              <FilterSelect
+                label="Mineral"
+                testId="grain-filter-mineral"
+                options={minerals.map((m) => ({ value: m, label: m }))}
+                value={listFilter.minerals}
+                onChange={(minerals) => setListFilter((f) => ({ ...f, minerals }))}
+              />
+              <FilterSelect
+                label="Tag"
+                testId="grain-filter-tag"
+                options={tags.map((t) => ({ value: t.id, label: t.name }))}
+                value={listFilter.tagIds}
+                onChange={(tagIds) => setListFilter((f) => ({ ...f, tagIds }))}
+              />
+              <FilterSelect
+                label="Has data"
+                testId="grain-filter-data"
+                options={sectionsWithData.map((sct) => ({ value: sct.id, label: sct.label }))}
+                value={listFilter.sections}
+                onChange={(sections) => setListFilter((f) => ({ ...f, sections: sections as SpotDataSectionId[] }))}
+              />
+              {filterOn && (
+                <Button size="small" sx={SMALL_BUTTON} onClick={() => setListFilter(NO_SPOT_LIST_FILTER)}>
+                  Clear filters
+                </Button>
+              )}
+            </Stack>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1.5, py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
               <Typography variant="caption" sx={{
                 color: 'text.secondary'
-              }}>
-                {selectedSpotIds.size} of {allPolygonSpots.length} polygon spots selected
+              }} data-testid="grain-spot-count">
+                {selectedSpotIds.size} of {allPolygonSpots.length} polygon spots checked
+                {filterOn && ` · ${shownSpots.length} shown`}
               </Typography>
               <Stack direction="row" spacing={0.5}>
                 <Button
                   size="small"
-                  sx={{ minWidth: 0, fontSize: '0.7rem', px: 1, py: 0 }}
+                  sx={SMALL_BUTTON}
                   onClick={() => {
-                    const allIds = allPolygonSpots.map(({ spot }) => spot.id);
-                    setSelectedSpotIds(new Set(allIds));
-                    setGrainAnalysisSelectedSpotIds(allIds);
+                    const next = new Set(selectedSpotIds);
+                    for (const { spot } of shownSpots) next.add(spot.id);
+                    changeSelection(next);
                   }}
                 >
-                  Select All
+                  {filterOn ? 'Check Shown' : 'Select All'}
                 </Button>
                 <Button
                   size="small"
-                  sx={{ minWidth: 0, fontSize: '0.7rem', px: 1, py: 0 }}
+                  sx={SMALL_BUTTON}
                   onClick={() => {
-                    setSelectedSpotIds(new Set());
-                    setGrainAnalysisSelectedSpotIds([]);
+                    const next = new Set(selectedSpotIds);
+                    for (const { spot } of shownSpots) next.delete(spot.id);
+                    changeSelection(next);
                   }}
                 >
-                  Select None
+                  {filterOn ? 'Uncheck Shown' : 'Select None'}
                 </Button>
               </Stack>
             </Box>
             <List dense disablePadding sx={{ overflow: 'auto', flex: 1 }}>
-              {allPolygonSpots.map(({ spot, micrograph }) => {
+              {shownSpots.map(({ spot, micrograph }) => {
                 const mineral = spot.mineralogy?.minerals?.[0]?.name;
                 return (
                   <ListItem
@@ -523,16 +893,10 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                       size="small"
                       checked={selectedSpotIds.has(spot.id)}
                       onChange={(e) => {
-                        setSelectedSpotIds(prev => {
-                          const next = new Set(prev);
-                          if (e.target.checked) {
-                            next.add(spot.id);
-                          } else {
-                            next.delete(spot.id);
-                          }
-                          setGrainAnalysisSelectedSpotIds(Array.from(next));
-                          return next;
-                        });
+                        const next = new Set(selectedSpotIds);
+                        if (e.target.checked) next.add(spot.id);
+                        else next.delete(spot.id);
+                        changeSelection(next);
                       }}
                       sx={{ p: 0.25, mr: 1 }}
                     />
@@ -559,7 +923,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                                 color: 'text.secondary',
                                 ml: 1
                               }}>
-                              — {micrograph.name}
+                              ({micrograph.name})
                             </Typography>
                           )}
                         </Typography>
@@ -568,12 +932,19 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                   </ListItem>
                 );
               })}
+              {shownSpots.length === 0 && (
+                <ListItem sx={{ px: 1.5 }}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    No polygon spots match these filters.
+                  </Typography>
+                </ListItem>
+              )}
             </List>
           </Paper>
         )}
 
         {/* Main Content */}
-        {grainMetrics.length === 0 ? (
+        {measured === 0 ? (
           <Alert severity="info" sx={{ mt: 2 }}>
             No polygon spots found to analyze.
             {scope === 'current' && currentMicrograph
@@ -611,6 +982,11 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                       label="Grid"
                       sx={{ mr: 0 }}
                     />
+                    <ChartDownloadButton
+                      label="size distribution chart"
+                      testId="download-histogram"
+                      onDownload={(format) => handleDownloadChart('histogram', format)}
+                    />
                   </Stack>
                 </Box>
                 <SizeHistogram
@@ -626,13 +1002,17 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
               {/* Rose Diagram */}
               {chartData.aspectRatios.some(ar => ar > 1.2) && (
                 <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Orientation</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="subtitle2">Orientation</Typography>
+                    <ChartDownloadButton
+                      label="rose diagram"
+                      testId="download-rose"
+                      onDownload={(format) => handleDownloadChart('rose', format)}
+                    />
+                  </Box>
                   {orientationFrames.length > 1 && (
                     <Alert severity="warning" sx={{ mb: 1.5, py: 0 }}>
-                      Polygons from {orientationFrames.length} reference micrographs are combined
-                      ({orientationFrames.map((f) => `${f.name}: ${f.grains}`).join(', ')}). Each is
-                      measured from its own reference micrograph&apos;s horizontal, and those are
-                      not related unless the sections were imaged the same way round.
+                      {framesWarning}
                     </Alert>
                   )}
                   <Box sx={{ display: 'flex', justifyContent: 'center' }}>
@@ -640,11 +1020,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                       orientations={chartData.orientations}
                       size={280}
                       showMean={true}
-                      frameDescription={
-                        scope === 'all'
-                          ? "each polygon's reference micrograph, measured as the polygon lies on the reference, including any rotation of the associated micrograph it was drawn on"
-                          : 'the micrograph image'
-                      }
+                      frameDescription={frameDescription}
                     />
                   </Box>
                 </Paper>
@@ -723,7 +1099,7 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
                       <Typography variant="body2">
                         Preferred Orientation: <strong>{analysisResults.preferredOrientation.toFixed(0)}°</strong>
                         {' ± '}
-                        {(Math.sqrt(-2 * Math.log(analysisResults.orientationStrength)) * 180 / Math.PI / 2).toFixed(0)}°
+                        {orientationSpreadDegrees(analysisResults).toFixed(0)}°
                       </Typography>
                     )}
                   </Box>
@@ -786,6 +1162,13 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
           Export CSV
         </Button>
         <Button
+          startIcon={<PdfIcon />}
+          onClick={handleExportPdf}
+          disabled={!analysisResults || exporting}
+        >
+          Export PDF
+        </Button>
+        <Button
           startIcon={copied ? <CheckIcon /> : <CopyIcon />}
           onClick={handleCopyStats}
           disabled={!analysisResults}
@@ -796,6 +1179,53 @@ export function GrainSizeAnalysisDialog({ open, onClose }: GrainSizeAnalysisDial
         <Box sx={{ flex: 1 }} />
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
+
+      {/* Save As... / Rename... */}
+      <Dialog open={namePrompt !== null} onClose={() => setNamePrompt(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>{namePrompt?.mode === 'rename' ? 'Rename Analysis' : 'Save Analysis'}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+            {namePrompt?.mode === 'rename'
+              ? 'The new name is shown here and in the right pane.'
+              : `Saves the ${spotIdsToSave.length} checked ${spotIdsToSave.length === 1 ? 'spot' : 'spots'} and the rock type ${
+                scope === 'all' ? 'with the project' : 'with this micrograph'}. The numbers are worked out again each time it is shown.`}
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            label="Name"
+            value={namePrompt?.value ?? ''}
+            onChange={(e) => setNamePrompt((p) => (p ? { ...p, value: e.target.value } : p))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !nameProblem) handleNameConfirm();
+            }}
+            error={nameProblem !== null && (namePrompt?.value ?? '') !== ''}
+            helperText={nameProblem ?? ' '}
+            slotProps={{ htmlInput: { maxLength: 120, 'data-testid': 'grain-analysis-name' } }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNamePrompt(null)}>Cancel</Button>
+          <Button variant="contained" disabled={nameProblem !== null} onClick={handleNameConfirm}>
+            {namePrompt?.mode === 'rename' ? 'Rename' : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete... */}
+      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Saved Analysis</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Delete the saved analysis &quot;{loaded?.name}&quot;? The spots themselves are not changed.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmDelete(false)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleDelete}>Delete</Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }

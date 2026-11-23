@@ -62,7 +62,7 @@ import { SpotTagsDialog } from './dialogs/SpotTagsDialog';
 import { AddMicrographToGroupsDialog } from './dialogs/AddMicrographToGroupsDialog';
 import { MetadataSummary } from './MetadataSummary';
 import { CustomUserDataSummary } from './CustomUserDataSummary';
-import { GrainSizeSummary } from './GrainSizeSummary';
+import { GrainSizeSummary, SavedGrainAnalysesSummary } from './GrainSizeSummary';
 import { PointCountSummary } from './PointCountSummary';
 import { StraboToolsSummary } from './StraboToolsSummary';
 import { ProjectMetadataSection } from './ProjectMetadataSection';
@@ -443,6 +443,7 @@ export function PropertiesPanel() {
               {!activeSpotId && activeMicrographId && (
                 <>
                   <GrainSizeSummary micrographId={activeMicrographId} />
+                  <SavedGrainAnalysesSummary micrographId={activeMicrographId} />
                   <PointCountSummary micrographId={activeMicrographId} />
                   <StraboToolsSummary micrographId={activeMicrographId} />
                 </>
@@ -491,6 +492,10 @@ export function PropertiesPanel() {
             {/* Every spot's Custom User Data in one table (only when there is some) */}
             <Box sx={{ mt: 2 }}>
               <CustomUserDataSummary wholeProject />
+            </Box>
+            {/* Saved All-micrograph Grain Size analyses (Claire #64) */}
+            <Box sx={{ mt: 2 }}>
+              <SavedGrainAnalysesSummary />
             </Box>
           </Box>
         )}

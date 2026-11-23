@@ -257,6 +257,13 @@ function nonEmptyList(list) {
   return out.length > 0 ? out : undefined;
 }
 
+/** A list of objects (items with an id), or undefined when empty (saved Grain Size analyses) */
+function nonEmptyObjectList(list) {
+  if (!Array.isArray(list)) return undefined;
+  const out = list.filter((v) => v !== null && typeof v === 'object' && !Array.isArray(v));
+  return out.length > 0 ? out : undefined;
+}
+
 /** A { key: text } map without empty values, or undefined when nothing is left (Custom User Data values) */
 function nonEmptyTextMap(map) {
   if (!map || typeof map !== 'object' || Array.isArray(map)) return undefined;
@@ -564,6 +571,8 @@ function serializeToLegacyFormat(project) {
     // Grain Size Analysis spot selection (project-level)
     grainAnalysisSpotFilter: project.grainAnalysisSpotFilter || undefined,
     grainAnalysisSelectedSpotIds: project.grainAnalysisSelectedSpotIds || undefined,
+    // Saved Grain Size analyses over All micrographs (v2 only, Claire #64)
+    grainAnalyses: nonEmptyObjectList(project.grainAnalyses),
   }, NEVER_SAVE.project);
 }
 
@@ -682,6 +691,8 @@ function serializeMicrograph(micrograph) {
     siblingScaleFactor: roundForDb(micrograph.siblingScaleFactor) || undefined,
     // Sketch overlay layers (new feature - not in legacy schema)
     sketchLayers: micrograph.sketchLayers || undefined,
+    // Saved Grain Size analyses of this micrograph (v2 only, Claire #64)
+    grainAnalyses: nonEmptyObjectList(micrograph.grainAnalyses),
     // StraboTools analysis results
     straboTools: cleanObjectForDb(micrograph.straboTools),
     // Batch-import completion flag: set when "Instrument and Image Info" was skipped at import.
@@ -784,6 +795,8 @@ function deserializeFromLegacyFormat(legacyJson) {
     // Grain Size Analysis spot selection (project-level)
     grainAnalysisSpotFilter: legacyJson.grainAnalysisSpotFilter || undefined,
     grainAnalysisSelectedSpotIds: legacyJson.grainAnalysisSelectedSpotIds || undefined,
+    // Saved Grain Size analyses over All micrographs (v2 only, Claire #64)
+    grainAnalyses: nonEmptyObjectList(legacyJson.grainAnalyses),
   }, LOAD_IGNORE.project);
 }
 
@@ -894,6 +907,8 @@ function deserializeMicrograph(micrograph) {
     siblingScaleFactor: micrograph.siblingScaleFactor,
     // Sketch overlay layers (new feature - not in legacy schema)
     sketchLayers: micrograph.sketchLayers,
+    // Saved Grain Size analyses of this micrograph (v2 only, Claire #64)
+    grainAnalyses: nonEmptyObjectList(micrograph.grainAnalyses),
     // StraboTools analysis results
     straboTools: micrograph.straboTools,
     // Batch-import completion flag

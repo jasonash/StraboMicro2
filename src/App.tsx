@@ -36,6 +36,7 @@ import { NewMicrographDialog } from './components/dialogs/NewMicrographDialog';
 import type { MosaicTarget, StitchedMosaic } from './services/stitch/stitchApp';
 import { CustomUserDataDialog } from './components/dialogs/CustomUserDataDialog';
 import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisDialog';
+import type { SavedAnalysisRef } from './utils/savedGrainAnalyses';
 import { StraboToolsDialog } from './components/dialogs/StraboToolsDialog';
 import { MineralColorDialog } from './components/dialogs/MineralColorDialog';
 import { QuickEditEntryDialog } from './components/dialogs/QuickEditEntryDialog';
@@ -63,6 +64,7 @@ import { SyncIntroNotice } from './components/SyncIntroNotice';
 import { useAppStore, undo, redo, setUndoBlockedHandler, setChangeGuard } from '@/store';
 import { currentPermissions } from '@/hooks/usePermissions';
 import { isRestricted, splitChanges, refusalMessage } from '@/utils/permissions';
+import { currentUndoTarget } from '@/utils/undoTarget';
 import { useAuthStore, promptLogin } from '@/store/useAuthStore';
 import { syncNowFromUser, requestFirstSync, TURN_ON_SYNC_EVENT, COLLABORATE_EVENT, LOGOUT_REQUEST_EVENT } from '@/services/syncActions';
 import { beginLinking, LINK_SYNC_EVENT, type LinkRequest } from '@/services/syncLinking';
@@ -234,6 +236,7 @@ function App() {
   const [stitchedForProject, setStitchedForProject] = useState<{ mosaic: StitchedMosaic; target: MosaicTarget } | null>(null);
   const [isCustomUserDataDialogOpen, setIsCustomUserDataDialogOpen] = useState(false);
   const [isGrainSizeAnalysisDialogOpen, setIsGrainSizeAnalysisDialogOpen] = useState(false);
+  const [grainAnalysisToOpen, setSavedAnalysisRef] = useState<SavedAnalysisRef | null>(null);
   const [isStraboToolsDialogOpen, setIsStraboToolsDialogOpen] = useState(false);
   const [straboToolsInitialMicrographId, setStraboToolsInitialMicrographId] = useState<string | null>(null);
   const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
@@ -584,6 +587,7 @@ function App() {
 
     // Grain Size Analysis menu item (Tools menu)
     unsubscribers.push(window.api.onGrainSizeAnalysis(() => {
+      setSavedAnalysisRef(null);
       setIsGrainSizeAnalysisDialogOpen(true);
     }));
 
@@ -594,7 +598,12 @@ function App() {
     }));
 
     // Grain Size Analysis from PropertiesPanel summary
-    const handleOpenGrainAnalysis = () => setIsGrainSizeAnalysisDialogOpen(true);
+    // detail: { home, id } opens that saved analysis (Claire #64); none = a new analysis
+    const handleOpenGrainAnalysis = (e: Event) => {
+      const detail = e instanceof CustomEvent ? (e.detail as SavedAnalysisRef | null | undefined) : null;
+      setSavedAnalysisRef(detail ?? null);
+      setIsGrainSizeAnalysisDialogOpen(true);
+    };
     window.addEventListener('open-grain-size-analysis', handleOpenGrainAnalysis);
     unsubscribers.push(() => window.removeEventListener('open-grain-size-analysis', handleOpenGrainAnalysis));
 
@@ -1005,13 +1014,20 @@ function App() {
       const { refused } = splitChanges(p, changes);
       return refused.length > 0 ? refusalMessage(refused[0].problem) : null;
     });
+    // The menu takes Ctrl+Z before the page does, so the page chooses what it
+    // acts on: a text field's own text, nothing behind an open dialog, else the
+    // project (src/utils/undoTarget.ts)
     unsubscribers.push(window.api.onUndo(() => {
-      void undo();
+      const target = currentUndoTarget();
+      if (target === 'text') document.execCommand('undo');
+      else if (target === 'project') void undo();
     }));
 
     // Redo menu item
     unsubscribers.push(window.api.onRedo(() => {
-      void redo();
+      const target = currentUndoTarget();
+      if (target === 'text') document.execCommand('redo');
+      else if (target === 'project') void redo();
     }));
 
     // Theme menu item
@@ -2035,6 +2051,7 @@ function App() {
       <GrainSizeAnalysisDialog
         open={isGrainSizeAnalysisDialogOpen}
         onClose={() => setIsGrainSizeAnalysisDialogOpen(false)}
+        initialAnalysis={grainAnalysisToOpen}
       />
       <MineralColorDialog
         isOpen={isMineralColorDialogOpen}
