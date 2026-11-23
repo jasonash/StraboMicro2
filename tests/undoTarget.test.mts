@@ -5,7 +5,7 @@
  *   npm run test:undo-target
  */
 
-import { undoTarget, isTextEditing } from '../src/utils/undoTarget.ts';
+import { undoTarget, isTextEditing, isDialogShowing } from '../src/utils/undoTarget.ts';
 
 let failures = 0;
 let passes = 0;
@@ -59,6 +59,13 @@ eq('nothing', isTextEditing(null), false);
 // A read-only field without a dialog does not swallow the project undo
 eq('read-only text field, no dialog: project', undoTarget({ tagName: 'INPUT', type: 'text', readOnly: true }, false), 'project');
 eq('read-only text field, dialog: none', undoTarget({ tagName: 'INPUT', type: 'text', readOnly: true }, true), 'none');
+
+// A dialog that is closing (fade) or closed and kept mounted does not count
+eq('open dialog (opacity 1)', isDialogShowing({ hidden: false, containerOpacity: '1' }), true);
+eq('opening dialog (no inline opacity yet)', isDialogShowing({ hidden: false, containerOpacity: '' }), true);
+eq('no container found: counts as open', isDialogShowing({ hidden: false, containerOpacity: null }), true);
+eq('closing dialog (fade to 0)', isDialogShowing({ hidden: false, containerOpacity: '0' }), false);
+eq('closed, kept mounted', isDialogShowing({ hidden: true, containerOpacity: '0' }), false);
 
 console.log(`\n${passes} passed, ${failures} failed`);
 if (failures > 0) process.exit(1);
