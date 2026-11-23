@@ -605,10 +605,12 @@ export function GrainSizeAnalysisDialog({ open, onClose, initialAnalysis = null 
         {/* Saved analyses (Claire #64) */}
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1, mb: 2 }}>
           <FormControl size="small" sx={{ minWidth: 260 }} disabled={!home}>
-            <InputLabel id="grain-analysis-pick-label">Analysis</InputLabel>
+            {/* The empty value (new analysis) still shows text, so the label stays up in the border */}
+            <InputLabel id="grain-analysis-pick-label" shrink>Analysis</InputLabel>
             <Select
               labelId="grain-analysis-pick-label"
               label="Analysis"
+              notched
               value={loaded ? loaded.id : ''}
               onChange={handlePickAnalysis}
               displayEmpty
