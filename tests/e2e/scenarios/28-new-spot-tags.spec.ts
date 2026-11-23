@@ -3,7 +3,7 @@
  * field lists the project's tags; the spot is saved with their ids in
  * spot.tags; the next New Spot in the project starts with the tags chosen
  * last (this session), and clearing them is remembered too. With no tags in
- * the project the field says where to create them. A Project-scope Quick Spot
+ * the project the field says how to make one (+ New Tag..., test 49). A Project-scope Quick Spot
  * Preset can carry tags (Global ones cannot: tags belong to a project);
  * choosing it in New Spot adds its tags to the field. One copy, not synced.
  */
@@ -81,10 +81,10 @@ test('tags chosen in Create New Spot are saved on the spot and start the next Ne
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 });
 
-test('with no tags in the project, the Tags field says where to create them', async ({ launch, project }) => {
+test('with no tags in the project, the Tags field says how to make one', async ({ launch, project }) => {
   const { ana } = await start(launch, project, 'E2E New Spot No Tags');
   const dialog = await newPointSpot(ana, 0);
-  await expect(dialog.getByText('No tags yet: create them in the Tags tab')).toBeVisible();
+  await expect(dialog.getByText('No tags yet: open the list and choose + New Tag...')).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 });
 

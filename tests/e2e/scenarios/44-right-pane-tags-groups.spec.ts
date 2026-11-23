@@ -57,7 +57,7 @@ test('a spot\'s tags: Add Data > Tags adds them, the Tags section shows them, it
   await addData(ana, 'Tags');
   let dialog = ana.page.getByRole('dialog', { name: 'Tags of "S1"' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText('New tags are made in the Tags tab (left pane).')).toBeVisible();
+  await expect(dialog.getByText('To make a new tag, choose + New Tag... at the bottom of the list.')).toBeVisible();
   await dialog.getByRole('combobox', { name: 'Tags' }).click();
   await ana.page.getByRole('option', { name: 'Garnet porphyroblast' }).click();
   await dialog.getByRole('button', { name: 'Save' }).click();
