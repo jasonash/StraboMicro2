@@ -5,7 +5,7 @@
  * Global colors are persisted in app preferences; project overrides are saved in the .smz file.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -21,50 +21,13 @@ import {
   Tabs,
   Tab,
   Alert,
-  Popover,
 } from '@mui/material';
 import { Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
-import { HexColorPicker } from 'react-colorful';
 import { useAppStore } from '../../store';
 import { AutocompleteMineralSearch } from './metadata/reusable/AutocompleteMineralSearch';
 import type { MineralColorEntry } from '@/types/mineral-color-types';
 import { DEFAULT_MINERAL_COLORS } from '@/constants/mineralColorDefaults';
-
-/** Clickable color swatch that opens a HexColorPicker in a themed Popover */
-function ColorSwatch({ color, onChange, size = 32 }: { color: string; onChange: (c: string) => void; size?: number }) {
-  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-
-  const handleClose = useCallback(() => setAnchorEl(null), []);
-
-  return (
-    <>
-      <Box
-        onClick={(e) => setAnchorEl(e.currentTarget)}
-        sx={{
-          width: size,
-          height: size,
-          minWidth: size,
-          backgroundColor: color,
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 1,
-          cursor: 'pointer',
-          flexShrink: 0,
-        }}
-      />
-      <Popover
-        open={Boolean(anchorEl)}
-        anchorEl={anchorEl}
-        onClose={handleClose}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-        slotProps={{ paper: { sx: { p: 1.5 } } }}
-      >
-        <HexColorPicker color={color} onChange={onChange} />
-      </Popover>
-    </>
-  );
-}
+import { ColorSwatch } from '../MineralColorSwatch';
 
 interface MineralColorDialogProps {
   isOpen: boolean;

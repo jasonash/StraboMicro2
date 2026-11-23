@@ -884,7 +884,9 @@ class PDFProjectExporter {
            .text('Minerals:');
 
         for (const mineral of entity.mineralogy.minerals) {
-          const percentage = hasValue(mineral.percentage) ? ` (${mineral.operator || ''}${mineral.percentage}%)` : '';
+          // No amount: null, or 0 (src/utils/mineralAmount.ts: the dialog saved 0 for a year)
+          const symbol = { eq: '= ', gt: '> ', lt: '< ' }[mineral.operator] || '';
+          const percentage = typeof mineral.percentage === 'number' && mineral.percentage !== 0 ? ` (${symbol}${mineral.percentage}%)` : '';
           doc.fontSize(FONT_SIZES.small)
              .fillColor(COLORS.text)
              .font('Helvetica')

@@ -47,7 +47,7 @@ export function SpotTagsDialog({ open, onClose, spotId }: SpotTagsDialogProps) {
         <TagPicker tags={tags} selectedTagIds={selected} onChange={setSelected} />
         {tags.length > 0 && (
           <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'text.secondary' }}>
-            New tags are made in the Tags tab (left pane).
+            To make a new tag, choose + New Tag... at the bottom of the list.
           </Typography>
         )}
       </DialogContent>
