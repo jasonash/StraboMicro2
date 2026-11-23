@@ -66,7 +66,10 @@ import type { Tag } from '@/types/project-types';
 interface CreateTagDialogProps {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  /** Called with the new tag after it is added to the project */
+  onCreated: (tag: Tag) => void;
+  /** Name filled in when creating (e.g. what was typed in a tag picker) */
+  initialName?: string;
   editMode?: boolean;
   editTag?: Tag | null;
   onTagSaved?: (tag: Tag) => void;
@@ -88,6 +91,7 @@ export function CreateTagDialog({
   open,
   onClose,
   onCreated,
+  initialName = '',
   editMode = false,
   editTag = null,
   onTagSaved,
@@ -143,13 +147,13 @@ export function CreateTagDialog({
         // setOtherTagType(editTag.otherTagType || '');
       } else {
         // Create mode - reset to defaults and load saved preferences
-        setName('');
+        setName(initialName);
         setNotes('');
         loadSavedPreferences();
       }
       setError('');
     }
-  }, [open, editMode, editTag, loadSavedPreferences]);
+  }, [open, editMode, editTag, initialName, loadSavedPreferences]);
 
   const handleSubmit = () => {
     const trimmedName = name.trim();
@@ -210,7 +214,7 @@ export function CreateTagDialog({
       };
 
       createTag(newTag);
-      onCreated();
+      onCreated(newTag);
     }
   };
 

@@ -6,13 +6,19 @@
  * being clicked; in the status line it went unnoticed.)
  */
 
-import { useEffect } from 'react';
-import { MenuItem, Select, Typography, Box, Tooltip } from '@mui/material';
+import { useEffect, useState } from 'react';
+import { Divider, MenuItem, Select, Typography, Box, Tooltip } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import { useAppStore } from '@/store';
 import { isSpotTool } from '@/store/useAppStore';
 import { useCanCreate } from '@/hooks/usePermissions';
 import { autoSpotDraft } from '@/utils/newSpot';
 import { chosenPattern } from '@/utils/autoSpotName';
+import { anyDialogShowing } from '@/utils/undoTarget';
+import { QuickApplyPresetEditorDialog } from './dialogs/QuickApplyPresetEditorDialog';
+
+/** Select value of the "New Preset..." line (never a preset id: those are uuids) */
+const NEW_PRESET = '__new_preset__';
 
 export const ALT_KEY_NAME = typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent) ? 'Option' : 'Alt';
 
@@ -40,6 +46,8 @@ function AutoSpotStripContent() {
   // Subscribed so the list follows preset edits; read through getAllPresetsWithScope
   useAppStore((s) => s.globalPresets);
   const getAllPresetsWithScope = useAppStore((s) => s.getAllPresetsWithScope);
+  // "New Preset..." in the list opens the preset editor; the saved preset becomes the auto preset (Claire, 2026-11-23)
+  const [creatingPreset, setCreatingPreset] = useState(false);
 
   // Every preset is offered (2026-11-11: a user's presets without a Spot Name
   // were hidden); one without a Spot Name uses the project's pattern
@@ -53,6 +61,8 @@ function AutoSpotStripContent() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!/^[1-9]$/.test(e.key) || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // Not while a dialog is open (e.g. New Preset... from this list)
+      if (anyDialogShowing()) return;
       const state = useAppStore.getState();
       const presetId = state.presetKeyBindings[e.key];
       if (!presetId || !state.getPresetById(presetId)) return;
@@ -99,7 +109,14 @@ function AutoSpotStripContent() {
           size="small"
           variant="standard"
           value={preset?.id ?? ''}
-          onChange={(e) => setAutoSpotPresetId(e.target.value === '' ? null : String(e.target.value))}
+          onChange={(e) => {
+            const value = String(e.target.value);
+            if (value === NEW_PRESET) {
+              setCreatingPreset(true);
+              return;
+            }
+            setAutoSpotPresetId(value === '' ? null : value);
+          }}
           displayEmpty
           renderValue={() => preset?.name ?? 'Default'}
           inputProps={{ 'aria-label': 'Auto spot preset' }}
@@ -120,10 +137,21 @@ function AutoSpotStripContent() {
               </MenuItem>
             );
           })}
+          <Divider />
+          <MenuItem value={NEW_PRESET} data-testid="auto-spot-new-preset" sx={{ color: 'primary.main', gap: 1 }}>
+            <AddIcon fontSize="small" />
+            New Preset...
+          </MenuItem>
         </Select>
         <Typography variant="body2" data-testid="auto-spot-next" sx={{ color: 'var(--text-secondary)' }}>
           Next: <strong>{draft.name}</strong>
         </Typography>
+        <QuickApplyPresetEditorDialog
+          open={creatingPreset}
+          onClose={() => setCreatingPreset(false)}
+          defaultScope="project"
+          onSaved={(saved) => setAutoSpotPresetId(saved.id)}
+        />
       </Box>
   );
 }
