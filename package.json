@@ -38,6 +38,7 @@
     "test:parent-area": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/parentArea.test.mjs",
     "test:grain-frames": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/grainFrames.test.mjs",
     "test:grain-analysis-pdf": "node tests/grainAnalysisPdf.test.js",
+    "test:svg-context": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/svgContext.test.mjs",
     "test:saved-grain-analyses": "rolldown -c tests/sync/rolldown.test.config.mjs && node node_modules/.cache/sync-tests/savedGrainAnalyses.test.mjs",
     "test:grain-orientation": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainOrientation.test.mts",
     "test:grain-outline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grainOutline.test.mts",

@@ -5,7 +5,7 @@
  * with the micrograph ("Current micrograph") or the project ("All
  * micrographs"); Save, Rename..., Delete...; each saved analysis is listed in
  * the right pane and opens from there; a deleted spot drops out with a notice;
- * Export PDF writes a PDF. One copy, not synced.
+ * Export PDF writes a PDF; each chart downloads as SVG or PNG. One copy, not synced.
  */
 
 import fs from 'fs';
@@ -146,6 +146,18 @@ test('micrograph analyses: filters, Save As, Save, Rename, right pane, PDF, dele
   await ana.answerDialog({ kind: 'save', filePath: pdf });
   await dlg.getByRole('button', { name: 'Export PDF' }).click();
   await expect.poll(() => fs.existsSync(pdf) && fs.readFileSync(pdf).subarray(0, 5).toString()).toBe('%PDF-');
+
+  await ana.caption('each chart downloads as SVG or PNG');
+  const svgFile = `${runDir}/histogram.svg`;
+  await ana.answerDialog({ kind: 'save', filePath: svgFile });
+  await dlg.getByTestId('download-histogram').click();
+  await ana.page.getByRole('menuitem', { name: /SVG image/ }).click();
+  await expect.poll(() => fs.existsSync(svgFile) && fs.readFileSync(svgFile, 'utf8').includes('>Equivalent Diameter</text>')).toBe(true);
+  const pngFile = `${runDir}/rose.png`;
+  await ana.answerDialog({ kind: 'save', filePath: pngFile });
+  await dlg.getByTestId('download-rose').click();
+  await ana.page.getByRole('menuitem', { name: /PNG image/ }).click();
+  await expect.poll(() => fs.existsSync(pngFile) && fs.readFileSync(pngFile).subarray(1, 4).toString()).toBe('PNG');
   await dlg.getByRole('button', { name: 'Close', exact: true }).click();
 
   await ana.caption('right pane: one section per saved analysis; Open Full Analysis... opens that one');

@@ -844,6 +844,13 @@ interface Window {
       timestamp: number;
     }>;
 
+    // Grain Size chart download (PNG data URL or SVG text; shows a save dialog)
+    saveGrainChart: (data: string, format: 'png' | 'svg', defaultName: string) => Promise<{
+      success: boolean;
+      canceled?: boolean;
+      filePath?: string;
+    }>;
+
     // Grain Size Analysis PDF (one analysis; shows a save dialog), electron/grainAnalysisPdf.js
     exportGrainAnalysisPdf: (content: import('./services/grainAnalysisPdf').GrainAnalysisPdfContent, defaultName: string) => Promise<{
       success: boolean;

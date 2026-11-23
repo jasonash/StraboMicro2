@@ -42,6 +42,7 @@ import {
   Tooltip,
   InputLabel,
   ListItemIcon,
+  Menu,
   type SelectChangeEvent,
 } from '@mui/material';
 import {
@@ -51,6 +52,7 @@ import {
   Check as CheckIcon,
   Save as SaveIcon,
   PictureAsPdf as PdfIcon,
+  FileDownloadOutlined as ChartDownloadIcon,
 } from '@mui/icons-material';
 import { v4 as uuidv4 } from 'uuid';
 import { useAppStore } from '@/store';
@@ -85,6 +87,7 @@ import {
 import { SPOT_DATA_SECTIONS, type SpotDataSectionId } from '@/utils/spotDataSections';
 import { useReadOnlyReason } from '@/hooks/usePermissions';
 import { exportGrainAnalysisPdf } from '@/services/grainAnalysisPdf';
+import { downloadChart, type ChartFormat } from '@/services/grainCharts';
 
 // =============================================================================
 // Types
@@ -223,6 +226,40 @@ function FilterSelect({
         ))}
       </Select>
     </FormControl>
+  );
+}
+
+/** A chart's download button: PNG or SVG, in print colors on white */
+function ChartDownloadButton({
+  label,
+  onDownload,
+  testId,
+}: {
+  label: string;
+  onDownload: (format: ChartFormat) => void;
+  testId: string;
+}) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const pick = (format: ChartFormat) => {
+    setAnchor(null);
+    onDownload(format);
+  };
+  return (
+    <>
+      <Tooltip title={`Download ${label}`}>
+        <IconButton size="small" aria-label={`Download ${label}`} data-testid={testId} onClick={(e) => setAnchor(e.currentTarget)}>
+          <ChartDownloadIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
+        <MenuItem dense onClick={() => pick('png')}>
+          <ListItemText primary="PNG image" secondary="Raster, high resolution" />
+        </MenuItem>
+        <MenuItem dense onClick={() => pick('svg')}>
+          <ListItemText primary="SVG image" secondary="Vector, editable in Illustrator or Inkscape" />
+        </MenuItem>
+      </Menu>
+    </>
   );
 }
 
@@ -413,6 +450,7 @@ export function GrainSizeAnalysisDialog({ open, onClose, initialAnalysis = null 
         scopeText: scope === 'all' ? 'All micrographs' : `Current micrograph: ${currentMicrograph?.name || 'Unnamed'}`,
         rockType,
         useLogScale,
+        showGrid,
         frameDescription,
         roseNote: framesWarning || undefined,
         missingNote: missingSpotsText(missingInLoaded) || undefined,
@@ -422,7 +460,23 @@ export function GrainSizeAnalysisDialog({ open, onClose, initialAnalysis = null 
     } finally {
       setExporting(false);
     }
-  }, [analysisResults, loaded, project, scope, currentMicrograph, rockType, useLogScale, frameDescription, framesWarning, missingInLoaded]);
+  }, [analysisResults, loaded, project, scope, currentMicrograph, rockType, useLogScale, showGrid, frameDescription, framesWarning, missingInLoaded]);
+
+  // One chart as a PNG or SVG file (print colors on white, as the PDF)
+  const handleDownloadChart = useCallback(async (kind: 'histogram' | 'rose', format: ChartFormat) => {
+    const base = loaded?.name ?? 'Grain Size';
+    try {
+      await downloadChart(
+        kind,
+        format,
+        { sizes: chartData.sizes, rockType, useLogScale, showGrid },
+        { orientations: chartData.orientations },
+        `${base} - ${kind === 'histogram' ? 'size distribution' : 'orientation'}`
+      );
+    } catch (error) {
+      console.error('Failed to save chart:', error);
+    }
+  }, [loaded, chartData, rockType, useLogScale, showGrid]);
 
   // ---- Saved analyses ----------------------------------------------------------------
 
@@ -928,6 +982,11 @@ export function GrainSizeAnalysisDialog({ open, onClose, initialAnalysis = null 
                       label="Grid"
                       sx={{ mr: 0 }}
                     />
+                    <ChartDownloadButton
+                      label="size distribution chart"
+                      testId="download-histogram"
+                      onDownload={(format) => handleDownloadChart('histogram', format)}
+                    />
                   </Stack>
                 </Box>
                 <SizeHistogram
@@ -943,7 +1002,14 @@ export function GrainSizeAnalysisDialog({ open, onClose, initialAnalysis = null 
               {/* Rose Diagram */}
               {chartData.aspectRatios.some(ar => ar > 1.2) && (
                 <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Orientation</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="subtitle2">Orientation</Typography>
+                    <ChartDownloadButton
+                      label="rose diagram"
+                      testId="download-rose"
+                      onDownload={(format) => handleDownloadChart('rose', format)}
+                    />
+                  </Box>
                   {orientationFrames.length > 1 && (
                     <Alert severity="warning" sx={{ mb: 1.5, py: 0 }}>
                       {framesWarning}

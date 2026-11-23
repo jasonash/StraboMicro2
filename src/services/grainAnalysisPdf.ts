@@ -1,16 +1,15 @@
 /**
  * Grain Size Analysis PDF, renderer side (Claire's issue #64, 2026-11-23).
  *
- * Draws the histogram and the rose with print colors on canvases that are
- * never shown (3x for a sharp page), formats the text exactly as the dialog
+ * Draws the histogram and the rose with print colors (src/services/grainCharts.ts,
+ * 3x for a sharp page), formats the text exactly as the dialog
  * shows it, and hands both to the main process (electron/grainAnalysisPdf.js),
  * which asks where to save and lays the page out.
  */
 
 import type { GrainAnalysisResults, RockType } from '@/services/grainAnalysis/types';
-import { generateHistogramBins, generateRoseSectors, getClassificationScheme } from '@/services/grainAnalysis/statistics';
-import { drawSizeHistogram, HISTOGRAM_PRINT_COLORS } from '@/components/charts/SizeHistogram';
-import { drawRoseDiagram, roseCaption, roseCircularStats, ROSE_PRINT_COLORS } from '@/components/charts/RoseDiagram';
+import { roseCaption } from '@/components/charts/drawRose';
+import { histogramPng, rosePng } from '@/services/grainCharts';
 import { orientationSpreadDegrees } from '@/utils/grainAnalysisRun';
 
 export interface GrainAnalysisPdfContent {
@@ -33,6 +32,7 @@ export interface GrainAnalysisPdfInput {
   scopeText: string;
   rockType: RockType;
   useLogScale: boolean;
+  showGrid: boolean;
   /** Which image's right side 0° points to (the rose caption) */
   frameDescription: string;
   /** Combined unrelated frames, deleted spots, etc. */
@@ -40,7 +40,6 @@ export interface GrainAnalysisPdfInput {
   missingNote?: string;
 }
 
-const SCALE = 3;
 
 function formatSize(microns: number): string {
   if (microns >= 1000) return (microns / 1000).toFixed(2) + ' mm';
@@ -62,19 +61,6 @@ const ROCK_TYPE_LABEL: Record<RockType, string> = {
   metamorphic: 'Metamorphic',
 };
 
-/** A canvas of width x height drawn at SCALE on a white background */
-function printCanvas(width: number, height: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null {
-  const canvas = document.createElement('canvas');
-  canvas.width = width * SCALE;
-  canvas.height = height * SCALE;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  ctx.scale(SCALE, SCALE);
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, width, height);
-  return { canvas, ctx };
-}
-
 /** Does the rose show (same rule as the dialog: some elongated grains) */
 export function showsRose(results: GrainAnalysisResults): boolean {
   return results.grains.some((g) => g.aspectRatio > 1.2);
@@ -86,37 +72,9 @@ export function buildGrainAnalysisPdfContent(input: GrainAnalysisPdfInput): Grai
   const sizes = results.grains.map((g) => g.equivalentDiameterMicrons);
   const orientations = results.grains.map((g) => g.orientationDegrees);
 
-  // Histogram: same size and bins as the dialog's
-  let histogramPng = '';
-  const hist = printCanvas(520, 300);
-  if (hist) {
-    drawSizeHistogram(hist.ctx, {
-      width: 520,
-      height: 300,
-      bins: generateHistogramBins(sizes, 15, input.useLogScale),
-      classification: getClassificationScheme(input.rockType),
-      useLogScale: input.useLogScale,
-      showGrid: true,
-      colors: HISTOGRAM_PRINT_COLORS,
-    });
-    histogramPng = hist.canvas.toDataURL('image/png');
-  }
-
-  let rosePng: string | null = null;
-  if (showsRose(results)) {
-    const rose = printCanvas(280, 280);
-    if (rose) {
-      drawRoseDiagram(rose.ctx, {
-        size: 280,
-        sectors: generateRoseSectors(orientations, 18),
-        orientationCount: orientations.length,
-        circularStats: roseCircularStats(orientations),
-        showMean: true,
-        colors: ROSE_PRINT_COLORS,
-      });
-      rosePng = rose.canvas.toDataURL('image/png');
-    }
-  }
+  // The charts as the dialog shows them, in print colors
+  const histogram = histogramPng({ sizes, rockType: input.rockType, useLogScale: input.useLogScale, showGrid: input.showGrid });
+  const rose = showsRose(results) ? rosePng({ orientations }) || null : null;
 
   const s = results.sizeStats;
   const sizeRows: Array<[string, string]> = [
@@ -151,10 +109,10 @@ export function buildGrainAnalysisPdfContent(input: GrainAnalysisPdfInput): Grai
   return {
     title: input.name ? `Grain Size Analysis: ${input.name}` : 'Grain Size Analysis',
     details,
-    histogramPng,
-    rosePng,
-    roseCaption: rosePng ? roseCaption(input.frameDescription, true) : [],
-    roseNote: rosePng ? input.roseNote : undefined,
+    histogramPng: histogram,
+    rosePng: rose,
+    roseCaption: rose ? roseCaption(input.frameDescription, true) : [],
+    roseNote: rose ? input.roseNote : undefined,
     stats: [
       {
         heading: 'Summary',
