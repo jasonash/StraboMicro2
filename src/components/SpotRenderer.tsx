@@ -10,7 +10,7 @@ import { Circle, Line, Group, Text, Rect } from 'react-konva';
 import { Spot } from '@/types/project-types';
 import { useAppStore } from '@/store';
 import { isSpotTool } from '@/store/useAppStore';
-import { DEFAULT_MINERAL_COLORS, NO_MINERAL_COLOR } from '@/constants/mineralColorDefaults';
+import { resolveMineralColor } from '@/utils/mineralColor';
 import { loadMinerals } from '@/utils/mineralData';
 
 /**
@@ -129,18 +129,8 @@ export const SpotRenderer: React.FC<SpotRendererProps> = ({
   // Determine base color: mineral-based or spot-based
   let baseColor: string;
   if (spotColorMode === 'mineral-color') {
-    const mineralName = spot.mineralogy?.minerals?.[0]?.name;
-    if (mineralName) {
-      // Project override > global default > hardcoded default > gray fallback
-      // Use case-insensitive matching since mineral names may differ in casing
-      const nameLower = mineralName.toLowerCase();
-      const projectEntry = projectMineralColors?.find((e) => e.mineral.toLowerCase() === nameLower);
-      const globalEntry = globalMineralColors?.find((e) => e.mineral.toLowerCase() === nameLower);
-      const defaultEntry = DEFAULT_MINERAL_COLORS.find((e) => e.mineral.toLowerCase() === nameLower);
-      baseColor = projectEntry?.color ?? globalEntry?.color ?? defaultEntry?.color ?? NO_MINERAL_COLOR;
-    } else {
-      baseColor = NO_MINERAL_COLOR;
-    }
+    // First mineral: project color > Global > built-in default > gray (src/utils/mineralColor.ts)
+    baseColor = resolveMineralColor(spot.mineralogy?.minerals?.[0]?.name, projectMineralColors, globalMineralColors).color;
   } else {
     baseColor = convertLegacyColor(spot.color || '#00ff00');
   }

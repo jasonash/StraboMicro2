@@ -62,6 +62,8 @@ import {
 import { sectionHasData } from '@/utils/spotDataSections';
 import { tagsOfSpot, groupsOfMicrograph } from '@/utils/tagsAndGroups';
 import { tagSwatchStyle } from '@/utils/tagSwatch';
+import { resolveMineralColor } from '@/utils/mineralColor';
+import { ColorSwatch } from './MineralColorSwatch';
 
 interface MetadataSummaryProps {
   micrographId?: string;
@@ -678,6 +680,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
   const myPkey = useAuthStore((state) => state.user?.pkey);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const globalPresets = useAppStore((state) => state.globalPresets);
+  const globalMineralColors = useAppStore((state) => state.globalMineralColors);
   const updateSpotData = useAppStore((state) => state.updateSpotData);
 
   // Load expansion state from localStorage
@@ -1247,11 +1250,20 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                     }}>
                     Minerals:
                   </Typography>
+                  {/* Each mineral with its color for View Spots by Mineral Color (view only; change it in the dialog) */}
                   {data.mineralogy.minerals.map((mineral, index) => (
-                    <Typography key={index} variant="body2">
-                      • {mineral.name}
-                      {mineral.operator && mineral.percentage && ` ${mineral.operator} ${mineral.percentage}%`}
-                    </Typography>
+                    <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <ColorSwatch
+                        color={resolveMineralColor(mineral.name, project?.mineralColors, globalMineralColors).color}
+                        size={12}
+                        label={`${mineral.name ?? 'Mineral'} color`}
+                        testId="summary-mineral-color"
+                      />
+                      <Typography variant="body2">
+                        {mineral.name}
+                        {mineral.operator && mineral.percentage && ` ${mineral.operator} ${mineral.percentage}%`}
+                      </Typography>
+                    </Box>
                   ))}
                 </Box>
               )}

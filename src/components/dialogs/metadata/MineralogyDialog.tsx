@@ -4,6 +4,11 @@
  * Two-tab dialog for editing mineralogy and lithology data.
  * Tab 1: Mineralogy - Add minerals with percentages, determination method
  * Tab 2: Lithology - Hierarchical lithology selection (Level 1-3)
+ *
+ * Each mineral in the list shows its color for View Spots by Mineral Color;
+ * a click changes the project's color for that mineral, saved with Save
+ * (Claire, 2026-11-23). Owners and Editors only: Contributors and Viewers
+ * cannot change project settings, so their swatches only show the color.
  */
 
 import { useState, useEffect } from 'react';
@@ -31,6 +36,9 @@ import { useAppStore } from '@/store';
 import { AutocompleteMineralSearch } from './reusable/AutocompleteMineralSearch';
 import { LithologyPicker, LithologySelection } from './reusable/LithologyPicker';
 import { OtherTextField } from './reusable/OtherTextField';
+import { ColorSwatch } from '../../MineralColorSwatch';
+import { useCanEdit } from '@/hooks/usePermissions';
+import { resolveMineralColor, withMineralColors } from '@/utils/mineralColor';
 import type { MineralogyType, LithologyInfoType } from '@/types/project-types';
 
 interface MineralogyDialogProps {
@@ -46,6 +54,44 @@ interface MineralogyDialogProps {
     mineralogy: MineralogyType | null,
     lithology: LithologyInfoType | null
   ) => void;
+}
+
+/** Hover text of a mineral's swatch */
+function mineralSwatchTitle(source: string, changed: boolean, editable: boolean): string {
+  const now = changed
+    ? 'New color, saved to the project with Save.'
+    : source === 'project'
+      ? "This project's color."
+      : source === 'global'
+        ? 'Your Global color (Spot > Configure Mineral Colors...).'
+        : source === 'default'
+          ? 'The built-in color.'
+          : 'No color set (gray).';
+  return editable
+    ? `${now} Click to choose this mineral's color for the project.`
+    : `${now} Only the owner or an Editor can change the project's mineral colors.`;
+}
+
+function MineralRowSwatch({ mineral, color, source, changed, editable, onChange }: {
+  mineral: string;
+  color: string;
+  source: string;
+  changed: boolean;
+  editable: boolean;
+  onChange: (color: string) => void;
+}) {
+  return (
+    <Box sx={{ mr: 1.5, display: 'flex' }}>
+      <ColorSwatch
+        color={color}
+        size={24}
+        onChange={editable ? onChange : undefined}
+        label={`${mineral} color`}
+        title={mineralSwatchTitle(source, changed, editable)}
+        testId="mineral-color-swatch"
+      />
+    </Box>
+  );
 }
 
 interface TabPanelProps {
@@ -105,6 +151,12 @@ export function MineralogyDialog({
   const project = useAppStore((state) => state.project);
   const updateMicrographMetadata = useAppStore((state) => state.updateMicrographMetadata);
   const updateSpotData = useAppStore((state) => state.updateSpotData);
+  const globalMineralColors = useAppStore((state) => state.globalMineralColors);
+  const setProjectMineralColors = useAppStore((state) => state.setProjectMineralColors);
+  // Mineral colors are a project setting (Owner or Editor)
+  const canSetColors = useCanEdit('project', project?.id) && project !== null;
+  // Colors chosen in this dialog (mineral name -> color), saved to the project with Save
+  const [pendingColors, setPendingColors] = useState<Record<string, string>>({});
 
   const [currentTab, setCurrentTab] = useState(0);
   const [formData, setFormData] = useState<MineralogyData>({
@@ -136,6 +188,7 @@ export function MineralogyDialog({
     setCurrentOperator('eq');
     setCurrentPercentage(null);
     setAskNotAdded(false);
+    setPendingColors({});
 
     // Preset mode: load from props instead of store
     if (presetMode) {
@@ -259,6 +312,10 @@ export function MineralogyDialog({
 
   const saveData = (data: MineralogyData) => {
     setAskNotAdded(false);
+    // Mineral colors chosen here go to the project's colors (one undo step with the data)
+    if (canSetColors && Object.keys(pendingColors).length > 0) {
+      setProjectMineralColors(withMineralColors(project?.mineralColors, pendingColors));
+    }
     // Save to TWO separate fields: mineralogy and lithologyInfo
     // Legacy app uses one dialog to edit both fields (by design)
     console.log('Saving mineralogy and lithology data:', data);
@@ -447,6 +504,7 @@ export function MineralogyDialog({
                   <List sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
                     {formData.minerals.map((mineral, index) => {
                       const operatorSymbol = mineral.operator === 'eq' ? '=' : mineral.operator === 'gt' ? '>' : '<';
+                      const resolved = resolveMineralColor(mineral.name, project?.mineralColors, globalMineralColors);
                       return (
                         <ListItem
                           key={index}
@@ -456,6 +514,14 @@ export function MineralogyDialog({
                             </IconButton>
                           }
                         >
+                          <MineralRowSwatch
+                            mineral={mineral.name}
+                            color={pendingColors[mineral.name] ?? resolved.color}
+                            changed={pendingColors[mineral.name] !== undefined}
+                            source={resolved.source}
+                            editable={canSetColors}
+                            onChange={(color) => setPendingColors((prev) => ({ ...prev, [mineral.name]: color }))}
+                          />
                           <ListItemText
                             primary={mineral.name}
                             secondary={`${operatorSymbol} ${mineral.percentage}%`}
@@ -464,6 +530,11 @@ export function MineralogyDialog({
                       );
                     })}
                   </List>
+                  {(spotId || presetMode) && (
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.5, color: 'text.secondary' }}>
+                      In View Spots by Mineral Color, a spot takes the color of its first mineral.
+                    </Typography>
+                  )}
                 </Box>
               )}
 
