@@ -117,3 +117,40 @@ test('a Contributor sees the colors but cannot change them', async ({ launch, pr
   await expect(ana.page.getByRole('slider', { name: 'Hue' })).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 });
+
+function minerals(copy: Copy, spotId: string) {
+  return copy.state(new Function('e', `
+    const s = e.app.getState().spotIndex.get(${JSON.stringify(spotId)});
+    return s?.mineralogy?.minerals ?? null;`) as never) as Promise<{ name: string; operator: string | null; percentage: number | null }[] | null>;
+}
+
+test('Save keeps "no amount": Quartz never becomes Quartz0 (Jason, 2026-11-23)', async ({ launch, project }) => {
+  const { p, ana } = await start(launch, project, 'E2E Mineral No Amount');
+  const spotId = await addSpot(ana, p.micrographId, 'qz-8');
+  await ana.caption("a spot as a preset made it: Quartz with no amount (operator '', 0); Garnet = 30%; Biotite saved by the old bug (eq, 0)");
+  await ana.state(new Function('e', `
+    const st = e.app.getState();
+    st.updateSpotData(${JSON.stringify(spotId)}, { mineralogy: { minerals: [
+      { name: 'Quartz', operator: '', percentage: 0 }, { name: 'Garnet', operator: 'eq', percentage: 30 },
+      { name: 'Biotite', operator: 'eq', percentage: 0 }] } });
+    return st.selectActiveSpot(${JSON.stringify(spotId)});`) as never);
+
+  const rows = ana.page.getByTestId('summary-mineral-color').locator('xpath=..');
+  await expect(rows).toHaveText(['Quartz', 'Garnet = 30%', 'Biotite']);
+
+  await ana.caption('the dialog lists no amount for Quartz and Biotite; Save');
+  await addData(ana, 'Mineralogy/Lithology');
+  const dialog = ana.page.getByRole('dialog', { name: 'Spot Mineralogy/Lithology' });
+  await expect(dialog.getByText('= 30%')).toBeVisible();
+  await expect(dialog.getByText(/(^|[^0-9.])0%/)).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toBeHidden();
+
+  await ana.caption('stored as the legacy app does (null); the right pane still says Quartz');
+  await expect.poll(() => minerals(ana, spotId)).toEqual([
+    { name: 'Quartz', operator: null, percentage: null },
+    { name: 'Garnet', operator: 'eq', percentage: 30 },
+    { name: 'Biotite', operator: null, percentage: null },
+  ]);
+  await expect(rows).toHaveText(['Quartz', 'Garnet = 30%', 'Biotite']);
+});

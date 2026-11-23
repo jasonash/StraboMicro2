@@ -63,6 +63,7 @@ import { sectionHasData } from '@/utils/spotDataSections';
 import { tagsOfSpot, groupsOfMicrograph } from '@/utils/tagsAndGroups';
 import { tagSwatchStyle } from '@/utils/tagSwatch';
 import { resolveMineralColor } from '@/utils/mineralColor';
+import { mineralAmountText } from '@/utils/mineralAmount';
 import { ColorSwatch } from './MineralColorSwatch';
 
 interface MetadataSummaryProps {
@@ -1261,7 +1262,7 @@ export function MetadataSummary({ micrographId, spotId, onEditSection }: Metadat
                       />
                       <Typography variant="body2">
                         {mineral.name}
-                        {mineral.operator && mineral.percentage && ` ${mineral.operator} ${mineral.percentage}%`}
+                        {mineralAmountText(mineral) && ` ${mineralAmountText(mineral)}`}
                       </Typography>
                     </Box>
                   ))}

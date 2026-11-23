@@ -39,6 +39,7 @@ import { OtherTextField } from './reusable/OtherTextField';
 import { ColorSwatch } from '../../MineralColorSwatch';
 import { useCanEdit } from '@/hooks/usePermissions';
 import { resolveMineralColor, withMineralColors } from '@/utils/mineralColor';
+import { mineralAmountText, mineralHasAmount } from '@/utils/mineralAmount';
 import type { MineralogyType, LithologyInfoType } from '@/types/project-types';
 
 interface MineralogyDialogProps {
@@ -110,8 +111,19 @@ function TabPanel({ children, value, index }: TabPanelProps) {
 
 interface MineralWithPercentage {
   name: string;
-  operator: string; // "eq" (=), "gt" (>), "lt" (<)
-  percentage: number;
+  operator: string; // "eq" (=), "gt" (>), "lt" (<); '' with no amount
+  percentage: number | null; // null: no amount
+}
+
+/**
+ * A stored mineral as a list entry. No amount (null, or the 0 this dialog
+ * wrongly saved for a year: src/utils/mineralAmount.ts) loads as null, so a
+ * Save no longer turns "Quartz" into "Quartz = 0%" (Jason, 2026-11-23).
+ */
+function loadMineral(m: { name?: string | null; operator?: string | null; percentage?: number | null }): MineralWithPercentage {
+  return mineralHasAmount(m) && typeof m.percentage === 'number'
+    ? { name: m.name || '', operator: m.operator || 'eq', percentage: m.percentage }
+    : { name: m.name || '', operator: '', percentage: null };
 }
 
 interface MineralogyData {
@@ -193,11 +205,7 @@ export function MineralogyDialog({
     // Preset mode: load from props instead of store
     if (presetMode) {
       setFormData({
-        minerals: initialMineralogy?.minerals?.map(m => ({
-          name: m.name || '',
-          operator: m.operator || 'eq',
-          percentage: m.percentage || 0,
-        })) || [],
+        minerals: initialMineralogy?.minerals?.map(loadMineral) || [],
         determinationMethod: initialMineralogy?.mineralogyMethod || '',
         percentageCalculationMethod: initialMineralogy?.percentageCalculationMethod || '',
         mineralogyNotes: initialMineralogy?.notes || '',
@@ -234,11 +242,7 @@ export function MineralogyDialog({
     }
 
     setFormData({
-      minerals: existingMineralogy?.minerals?.map((m: any) => ({
-        name: m.name || '',
-        operator: m.operator || 'eq',
-        percentage: m.percentage || 0,
-      })) || [],
+      minerals: existingMineralogy?.minerals?.map(loadMineral) || [],
       determinationMethod: existingMineralogy?.mineralogyMethod || '',
       percentageCalculationMethod: existingMineralogy?.percentageCalculationMethod || '',
       mineralogyNotes: existingMineralogy?.notes || '',
@@ -259,10 +263,10 @@ export function MineralogyDialog({
   // The chosen mineral as a list entry (null when none is chosen)
   const chosenMineral = (): MineralWithPercentage | null => {
     if (selectedMinerals.length === 0) return null;
-    // Only include percentage info if actually entered (0 is stored, the null state is tracked here)
-    return currentPercentage != null
+    // No percentage entered (or 0): no amount, stored as null like the legacy app
+    return currentPercentage != null && currentPercentage !== 0
       ? { name: selectedMinerals[0], operator: currentOperator, percentage: currentPercentage }
-      : { name: selectedMinerals[0], operator: '', percentage: 0 };
+      : { name: selectedMinerals[0], operator: '', percentage: null };
   };
 
   // Add selected mineral with percentage to list
@@ -322,11 +326,9 @@ export function MineralogyDialog({
 
     // Build mineralogy object (Tab 1)
     const mineralogy = {
-      minerals: data.minerals.map(m => ({
-        name: m.name,
-        operator: m.operator,
-        percentage: m.percentage,
-      })),
+      minerals: data.minerals.map(m => (m.percentage != null
+        ? { name: m.name, operator: m.operator || 'eq', percentage: m.percentage }
+        : { name: m.name, operator: null, percentage: null })),
       mineralogyMethod: data.determinationMethod || null,
       percentageCalculationMethod: data.percentageCalculationMethod || null,
       notes: data.mineralogyNotes || null,
@@ -503,7 +505,6 @@ export function MineralogyDialog({
                   </Typography>
                   <List sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
                     {formData.minerals.map((mineral, index) => {
-                      const operatorSymbol = mineral.operator === 'eq' ? '=' : mineral.operator === 'gt' ? '>' : '<';
                       const resolved = resolveMineralColor(mineral.name, project?.mineralColors, globalMineralColors);
                       return (
                         <ListItem
@@ -524,7 +525,7 @@ export function MineralogyDialog({
                           />
                           <ListItemText
                             primary={mineral.name}
-                            secondary={`${operatorSymbol} ${mineral.percentage}%`}
+                            secondary={mineralAmountText(mineral) || undefined}
                           />
                         </ListItem>
                       );
