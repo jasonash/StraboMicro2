@@ -230,6 +230,7 @@ const imageConverter = require('./imageConverter');
 const projectSerializer = require('./projectSerializer');
 const scratchSpace = require('./scratchSpace');
 const pdfExport = require('./pdfExport');
+const grainAnalysisPdf = require('./grainAnalysisPdf');
 // Use React-PDF for better layout and working internal links
 const pdfProjectExport = require('./pdfReactExport');
 const smzExport = require('./smzExport');
@@ -2244,6 +2245,58 @@ ipcMain.handle('shell:open-path', async (event, filePath) => {
 });
 
 // Export detailed notes to PDF
+// Grain Size chart download: a PNG (data URL) or an SVG (text) drawn by the renderer
+ipcMain.handle('grain-analysis:save-chart', async (event, data, format, defaultName) => {
+  try {
+    const isSvg = format === 'svg';
+    let bytes;
+    if (isSvg) {
+      if (typeof data !== 'string' || !data.includes('<svg')) throw new Error('not an SVG');
+      bytes = Buffer.from(data, 'utf8');
+    } else {
+      bytes = grainAnalysisPdf.pngFromDataUrl(data);
+      if (!bytes) throw new Error('not a PNG data URL');
+    }
+    const ext = isSvg ? 'svg' : 'png';
+    const safeName = String(defaultName || 'chart').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 150);
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: isSvg ? 'Save Chart as SVG' : 'Save Chart as PNG',
+      defaultPath: `${safeName}.${ext}`,
+      filters: [isSvg ? { name: 'SVG Images', extensions: ['svg'] } : { name: 'PNG Images', extensions: ['png'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+    await fs.promises.writeFile(result.filePath, bytes);
+    log.info(`[IPC] Grain Size chart saved: ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+  } catch (error) {
+    log.error('[IPC] Error saving Grain Size chart:', error);
+    throw error;
+  }
+});
+
+// Grain Size Analysis PDF (Claire #64): the renderer sends the charts as PNGs and the text
+ipcMain.handle('grain-analysis:export-pdf', async (event, content, defaultName) => {
+  try {
+    const safeName = String(defaultName || 'Grain Size Analysis').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 150);
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export Grain Size Analysis to PDF',
+      defaultPath: `${safeName}.pdf`,
+      filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+    await grainAnalysisPdf.writeGrainAnalysisPdf(result.filePath, content);
+    log.info(`[IPC] Grain Size Analysis PDF saved: ${result.filePath}`);
+    return { success: true, filePath: result.filePath };
+  } catch (error) {
+    log.error('[IPC] Error exporting Grain Size Analysis PDF:', error);
+    throw error;
+  }
+});
+
 ipcMain.handle('pdf:export-detailed-notes', async (event, projectData, micrographId, spotId) => {
   try {
     log.info('[IPC] Exporting detailed notes to PDF');

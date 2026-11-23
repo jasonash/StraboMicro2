@@ -121,6 +121,28 @@ const m = (body, extra) => st('micrograph', 'm1', body, extra);
     eq(r4.conflicts[0].path, ['sketchLayers', '[L1]']), J(r4.conflicts));
 }
 
+// --- Saved Grain Size analyses (Claire #64) ----------------------------------------
+{
+  const A = (id, extra = {}) => ({ id, name: id, spotIds: ['s1'], rockType: 'igneous', date: 't', ...extra });
+  const base = m({ grainAnalyses: [A('a1')] });
+  const r = mergeEntity(base, m({ grainAnalyses: [A('a1'), A('mine')] }), m({ grainAnalyses: [A('a1'), A('theirs')] }));
+  check('grain analyses: saved on both sides, both kept', r.conflicts.length === 0 &&
+    eq(r.state.body.grainAnalyses.map((a) => a.id), ['a1', 'mine', 'theirs']), J(r));
+  const r2 = mergeEntity(base, m({ grainAnalyses: [A('a1', { name: 'Renamed' })] }), m({ grainAnalyses: [A('a1', { spotIds: ['s1', 's2'] })] }));
+  check('grain analyses: renamed by me, spots changed by them, both kept', r2.conflicts.length === 0 &&
+    r2.state.body.grainAnalyses[0].name === 'Renamed' && eq(r2.state.body.grainAnalyses[0].spotIds, ['s1', 's2']), J(r2));
+  const r3 = mergeEntity(base, m({ grainAnalyses: [A('a1', { name: 'Mine' })] }), m({ grainAnalyses: [A('a1', { name: 'Theirs' })] }));
+  check('grain analyses: same one renamed both sides = conflict on its name', r3.conflicts.length === 1 &&
+    eq(r3.conflicts[0].path, ['grainAnalyses', '[a1]', 'name']), J(r3.conflicts));
+  const pr = (body) => st('project', 'P', body, { parentType: null, parentId: null });
+  const r4 = mergeEntity(pr({ grainAnalyses: [] }), pr({ grainAnalyses: [A('x')] }), pr({ grainAnalyses: [A('y')] }));
+  check('grain analyses on the project: both kept', r4.conflicts.length === 0 &&
+    eq(r4.state.body.grainAnalyses.map((a) => a.id), ['x', 'y']), J(r4));
+  const r5 = mergeEntity(base, m({ grainAnalyses: [] }), m({ grainAnalyses: [A('a1'), A('new')] }));
+  check('grain analyses: deleted by me, other added by them', r5.conflicts.length === 0 &&
+    eq(r5.state.body.grainAnalyses.map((a) => a.id), ['new']), J(r5));
+}
+
 // --- Parent and child order -------------------------------------------------------
 {
   const r = mergeEntity(m({}), m({}), m({}, { parentId: 's2' }));

@@ -348,6 +348,14 @@ contextBridge.exposeInMainWorld('api', {
   resetEverything: () => ipcRenderer.invoke('debug:reset-everything'),
   getMemoryInfo: () => ipcRenderer.invoke('debug:get-memory-info'),
 
+  // Grain Size chart download (PNG data URL or SVG text), save dialog in main
+  saveGrainChart: (data, format, defaultName) =>
+    ipcRenderer.invoke('grain-analysis:save-chart', data, format, defaultName),
+
+  // Grain Size Analysis PDF (Claire #64): one analysis, save dialog in main
+  exportGrainAnalysisPdf: (content, defaultName) =>
+    ipcRenderer.invoke('grain-analysis:export-pdf', content, defaultName),
+
   // PDF export
   exportDetailedNotesToPDF: (projectData, micrographId, spotId) =>
     ipcRenderer.invoke('pdf:export-detailed-notes', projectData, micrographId, spotId),

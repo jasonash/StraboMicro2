@@ -36,6 +36,7 @@ import { NewMicrographDialog } from './components/dialogs/NewMicrographDialog';
 import type { MosaicTarget, StitchedMosaic } from './services/stitch/stitchApp';
 import { CustomUserDataDialog } from './components/dialogs/CustomUserDataDialog';
 import { GrainSizeAnalysisDialog } from './components/dialogs/GrainSizeAnalysisDialog';
+import type { SavedAnalysisRef } from './utils/savedGrainAnalyses';
 import { StraboToolsDialog } from './components/dialogs/StraboToolsDialog';
 import { MineralColorDialog } from './components/dialogs/MineralColorDialog';
 import { QuickEditEntryDialog } from './components/dialogs/QuickEditEntryDialog';
@@ -235,6 +236,7 @@ function App() {
   const [stitchedForProject, setStitchedForProject] = useState<{ mosaic: StitchedMosaic; target: MosaicTarget } | null>(null);
   const [isCustomUserDataDialogOpen, setIsCustomUserDataDialogOpen] = useState(false);
   const [isGrainSizeAnalysisDialogOpen, setIsGrainSizeAnalysisDialogOpen] = useState(false);
+  const [grainAnalysisToOpen, setSavedAnalysisRef] = useState<SavedAnalysisRef | null>(null);
   const [isStraboToolsDialogOpen, setIsStraboToolsDialogOpen] = useState(false);
   const [straboToolsInitialMicrographId, setStraboToolsInitialMicrographId] = useState<string | null>(null);
   const [isQuickEditEntryDialogOpen, setIsQuickEditEntryDialogOpen] = useState(false);
@@ -585,6 +587,7 @@ function App() {
 
     // Grain Size Analysis menu item (Tools menu)
     unsubscribers.push(window.api.onGrainSizeAnalysis(() => {
+      setSavedAnalysisRef(null);
       setIsGrainSizeAnalysisDialogOpen(true);
     }));
 
@@ -595,7 +598,12 @@ function App() {
     }));
 
     // Grain Size Analysis from PropertiesPanel summary
-    const handleOpenGrainAnalysis = () => setIsGrainSizeAnalysisDialogOpen(true);
+    // detail: { home, id } opens that saved analysis (Claire #64); none = a new analysis
+    const handleOpenGrainAnalysis = (e: Event) => {
+      const detail = e instanceof CustomEvent ? (e.detail as SavedAnalysisRef | null | undefined) : null;
+      setSavedAnalysisRef(detail ?? null);
+      setIsGrainSizeAnalysisDialogOpen(true);
+    };
     window.addEventListener('open-grain-size-analysis', handleOpenGrainAnalysis);
     unsubscribers.push(() => window.removeEventListener('open-grain-size-analysis', handleOpenGrainAnalysis));
 
@@ -2043,6 +2051,7 @@ function App() {
       <GrainSizeAnalysisDialog
         open={isGrainSizeAnalysisDialogOpen}
         onClose={() => setIsGrainSizeAnalysisDialogOpen(false)}
+        initialAnalysis={grainAnalysisToOpen}
       />
       <MineralColorDialog
         isOpen={isMineralColorDialogOpen}

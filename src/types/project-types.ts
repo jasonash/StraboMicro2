@@ -64,6 +64,26 @@ export interface ProjectMetadata {
   // Grain Size Analysis spot selection (project-level)
   grainAnalysisSpotFilter?: 'all' | 'selected' | null;
   grainAnalysisSelectedSpotIds?: string[] | null;
+
+  // Saved Grain Size analyses over All micrographs (v2 only, Claire #64; see SavedGrainAnalysis)
+  grainAnalyses?: SavedGrainAnalysis[] | null;
+}
+
+/**
+ * A named, saved Grain Size Analysis (v2 only, Claire's issue #64, 2026-11-23).
+ * One on a micrograph covers that micrograph ("Current micrograph"); one on the
+ * project covers all micrographs. It keeps the chosen spots and settings, never
+ * the numbers: they are worked out again whenever it is shown. Spots deleted
+ * later simply drop out (src/utils/savedGrainAnalyses.ts).
+ */
+export interface SavedGrainAnalysis {
+  id: string;
+  name: string;
+  /** The polygon spots it covers, as checked when saved */
+  spotIds: string[];
+  rockType: 'sedimentary' | 'igneous' | 'metamorphic';
+  /** ISO time it was first saved */
+  date: string;
 }
 
 export interface DatasetMetadata {
@@ -271,6 +291,10 @@ export interface MicrographMetadata {
   // ========== SKETCH OVERLAY LAYERS ==========
   /** Sketch overlay layers for freeform annotations on this micrograph */
   sketchLayers?: SketchLayer[] | null;
+
+  // ========== SAVED GRAIN SIZE ANALYSES ==========
+  /** Named Grain Size analyses of this micrograph's polygon spots (v2 only, Claire #64) */
+  grainAnalyses?: SavedGrainAnalysis[] | null;
 
   // ========== STRABO TOOLS ANALYSIS RESULTS ==========
   /** Results from StraboTools image analysis (Edge Fabric, Color Index, Edge Detect, Mode) */
