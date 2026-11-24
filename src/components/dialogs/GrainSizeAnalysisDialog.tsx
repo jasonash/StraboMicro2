@@ -1198,7 +1198,12 @@ export function GrainSizeAnalysisDialog({ open, onClose, initialAnalysis = null 
             value={namePrompt?.value ?? ''}
             onChange={(e) => setNamePrompt((p) => (p ? { ...p, value: e.target.value } : p))}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !nameProblem) handleNameConfirm();
+              if (e.key !== 'Enter') return;
+              // Without preventDefault, Enter closed the prompt and then
+              // pressed Save As... (focus goes back to it), which reopened
+              // the prompt as "Analysis 1" (Claire, 2026-11-23)
+              e.preventDefault();
+              if (!nameProblem) handleNameConfirm();
             }}
             error={nameProblem !== null && (namePrompt?.value ?? '') !== ''}
             helperText={nameProblem ?? ' '}

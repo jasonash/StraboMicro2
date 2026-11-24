@@ -133,7 +133,10 @@ function SessionCard({ session, onContinue, onRename, onDelete, showActions = fa
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveName();
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSaveName();
+                }
                 if (e.key === 'Escape') {
                   setEditName(session.name);
                   setIsEditing(false);

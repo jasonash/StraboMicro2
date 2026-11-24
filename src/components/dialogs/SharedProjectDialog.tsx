@@ -263,6 +263,7 @@ export function SharedProjectDialog({
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && shareCode.length === 6 && dialogState === 'input') {
+      e.preventDefault();
       startDownload();
     }
   };

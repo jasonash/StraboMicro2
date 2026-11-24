@@ -63,11 +63,21 @@ async function filterBy(copy: Copy, testId: string, options: string[]) {
   await copy.page.keyboard.press('Escape');
 }
 
-async function saveAs(copy: Copy, name: string) {
+/**
+ * Save As... with a name, confirmed with the Save button or the Enter key.
+ * Enter once closed the prompt and then "clicked" Save As... again (focus
+ * went back to it), so the prompt came back as "Analysis 1" (Claire,
+ * 2026-11-23); the prompt must stay closed.
+ */
+async function saveAs(copy: Copy, name: string, confirm: 'button' | 'enter' = 'button') {
   await grainDialog(copy).getByRole('button', { name: 'Save As...' }).click();
   const prompt = copy.page.getByRole('dialog', { name: 'Save Analysis' });
   await prompt.getByTestId('grain-analysis-name').fill(name);
-  await prompt.getByRole('button', { name: 'Save' }).click();
+  if (confirm === 'enter') await prompt.getByTestId('grain-analysis-name').press('Enter');
+  else await prompt.getByRole('button', { name: 'Save' }).click();
+  await expect(prompt).toHaveCount(0);
+  // Long enough for a reopened prompt to show
+  await copy.page.waitForTimeout(500);
   await expect(prompt).toHaveCount(0);
 }
 
@@ -196,13 +206,13 @@ test('All micrographs: saved with the project, listed on the Project tab', async
   await addGrain(ana, p.micrographId, 'B', 400, 120, 60, 'Quartz', []);
   const total = await polygonCount(ana);
 
-  await ana.caption('All micrographs + All spots, Save As... "Whole project"');
+  await ana.caption('All micrographs + All spots, Save As... "Whole project" (Enter key)');
   await openGrainDialog(ana);
   const dlg = grainDialog(ana);
   await dlg.getByLabel('All micrographs').check();
   await dlg.getByLabel('All spots').check();
   await expect(dlg.getByText('All-micrograph analyses are saved with the project.')).toBeVisible();
-  await saveAs(ana, 'Whole project');
+  await saveAs(ana, 'Whole project', 'enter');
   await expect.poll(async () => (await projectAnalyses(ana)).map((a) => [a.name, a.spotIds.length])).toEqual([['Whole project', total]]);
   await expect.poll(async () => (await micrographAnalyses(ana, p.micrographId)).length).toBe(0);
 
