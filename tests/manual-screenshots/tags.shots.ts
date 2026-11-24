@@ -55,7 +55,7 @@ test('2.0.60 tags in the right pane', async ({ launch, runDir }) => {
     await page.getByRole('option', { name }).click();
   }
   // Close the tag list only (Escape would close the dialog)
-  await dialog.getByText('New tags are made in the Tags tab (left pane).').click();
+  await dialog.getByText('To make a new tag, choose + New Tag... at the bottom of the list.').click();
   await expect(page.getByRole('listbox')).toHaveCount(0);
   await settle(ana, 500);
   await shot(ana, 'spot-tags-dialog', dialog, 0);
