@@ -220,6 +220,8 @@ export function CreateTagDialog({
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Enter' && name.trim()) {
+      // Keeps Enter from also pressing the button that opened the dialog
+      event.preventDefault();
       handleSubmit();
     }
   };

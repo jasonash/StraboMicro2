@@ -78,6 +78,8 @@ export function CreateGroupDialog({
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Enter' && groupName.trim()) {
+      // Keeps Enter from also pressing the button that opened the dialog
+      event.preventDefault();
       handleSubmit();
     }
   };

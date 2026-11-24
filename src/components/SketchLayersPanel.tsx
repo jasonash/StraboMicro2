@@ -150,6 +150,7 @@ export const SketchLayersPanel: React.FC = () => {
   // Handle rename key press
   const handleRenameKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      e.preventDefault();
       handleRenameConfirm();
     } else if (e.key === 'Escape') {
       handleRenameCancel();
