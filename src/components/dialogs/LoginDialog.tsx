@@ -59,6 +59,7 @@ export function LoginDialog({ isOpen, onClose, message }: LoginDialogProps) {
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && email && password && !isLoading) {
+      e.preventDefault();
       handleLogin();
     }
   };
