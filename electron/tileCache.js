@@ -143,6 +143,16 @@ class TileCache {
         return { exists: false, hash };
       }
 
+      // metadata.json is written before thumbnail.jpg, so a first load that was
+      // cut short (app closed, crash, failed write) leaves a cache with no
+      // thumbnail. The viewer cannot show the image from it, and it would stay
+      // that way on every open (Sentry ELECTRON-3C). Treat it as a miss so it
+      // is rebuilt.
+      if (!fsSync.existsSync(this.getThumbnailPath(hash))) {
+        console.log('Cache has no thumbnail, invalidating cache');
+        return { exists: false, hash };
+      }
+
       return { exists: true, hash, metadata };
     } catch (error) {
       console.error('Error checking cache validity:', error);
